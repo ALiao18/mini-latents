@@ -1,9 +1,9 @@
 import numpy as np
 from abc import ABC, abstractmethod
 
-class LinearLatentModels():
+class LinearLatentModels(ABC):
     def __init__(self, n_components: int):
-        self.n_components_          = n_components
+        self.n_components           = n_components
         self.components_            = None # 2D array: eigenvectors of the top n_components
         self.mean_                  = None 
         self.noise_cov_             = None

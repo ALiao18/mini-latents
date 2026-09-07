@@ -1,6 +1,6 @@
-from base import LinearLatentModels
-from noise_model import IsotropicNoise, AnisotropicNoise
-from em_core import fit_em
+from .base import LinearLatentModels
+from .noise_model import IsotropicNoise, AnisotropicNoise
+from .em_core import EM
 import numpy as np
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):

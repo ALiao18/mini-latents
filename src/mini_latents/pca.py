@@ -1,4 +1,4 @@
-from base import LinearLatentModels
+from .base import LinearLatentModels
 import numpy as np
 from scipy.linalg import eigh
 
@@ -11,22 +11,25 @@ class PCA(LinearLatentModels):
         '''
         Fit the PCA model to the data X
         '''
-
         # center the data
         self.mean_   = X.mean(axis=0)
         self.Xc   = X - self.mean_
 
         # get the covariance matrix
         self.noise_cov_ = np.cov(self.Xc, rowvar = False)
-        eigenvectors, eigenvalues = eigh(self.noise_cov_)
+        eigenvalues, eigenvectors = eigh(self.noise_cov_)
 
         # sort the eigenvalues and eigenvectors in descending order
-        sorted_indices = np.argsort(eigenvalues)[::-1]
-        self.explained_variance = eigenvalues[sorted_indices][:self.n_components]
-        self.components = eigenvectors[sorted_indices][:self.n_components]
+        sorted_indices              = np.argsort(eigenvalues)[::-1]
+        self.explained_variance_    = eigenvalues[sorted_indices][:self.n_components]
+        self.components_            = eigenvectors[:, sorted_indices][:, :self.n_components].T
 
-    def transform(self):
-        self.Z = self.Xc @ self.components_
+        return self
+
+    def transform(self, X: np.ndarray):
+        X_centered = X - self.mean_
+        self.Z = X_centered @ self.components_.T
+        return self.Z
 
 
 
