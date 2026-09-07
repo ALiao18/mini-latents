@@ -2,8 +2,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 class NoiseModel(ABC):
-    def __init__(self):
-        self.psi = None
     @abstractmethod
     def m_step(self, X: np.ndarray, W, Ez: np.ndarray, Ezz: np.ndarray):
         '''
@@ -32,7 +30,7 @@ class NoiseModel(ABC):
 class IsotropicNoise(NoiseModel):
     def __init__(self, d):
         self.d = d
-        self.psi = 1.0
+        self.psi = np.ones(d)
 
     def m_step(self, X, W, Ez, Ezz):
         N, d = X.shape
@@ -52,7 +50,7 @@ class IsotropicNoise(NoiseModel):
 class AnisotropicNoise(NoiseModel):
     def __init__(self, d):
         self.d = d
-        self.psi = 1.0
+        self.psi = np.ones(d)
 
     def m_step(self, X, W, Ez, Ezz):
         N, self.d = X.shape
