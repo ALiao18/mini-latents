@@ -28,8 +28,3 @@ class LinearLatentModels(ABC):
         Transform the latent representation Z back to the original space
         '''
         return self.Z @ self.components_.T + self.mean_
-
-    def sample(self, n_samples: int):
-        '''
-        Sample from the model
-        '''
