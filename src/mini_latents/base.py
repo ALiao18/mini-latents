@@ -23,8 +23,8 @@ class LinearLatentModels(ABC):
         Transform the data X to the latent space
         '''
 
-    def inverse_transform(self):
+    def inverse_transform(self, Z: np.ndarray):
         '''
         Transform the latent representation Z back to the original space
         '''
-        return self.Z @ self.components_.T + self.mean_
+        return Z @ self.components_.T + self.mean_

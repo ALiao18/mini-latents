@@ -28,9 +28,13 @@ class NoiseModel(ABC):
         '''
 
 class IsotropicNoise(NoiseModel):
-    def __init__(self, d):
-        self.d = d
-        self.psi = np.ones(d)
+    def __init__(self):
+        self.d = None
+        self.psi = None
+
+    def initialize(self, X):
+        self.d = X.shape[1]
+        self.psi = np.var(X, axis=0).mean()
 
     def m_step(self, X, W, Ez, Ezz):
         N, d = X.shape
@@ -44,13 +48,14 @@ class IsotropicNoise(NoiseModel):
     def as_matrix(self) -> np.ndarray:
         return self.psi * np.eye(self.d)
 
-    def initialize(self, X):
-        self.psi = np.var(X, axis=0).mean()
-
 class AnisotropicNoise(NoiseModel):
-    def __init__(self, d):
-        self.d = d
-        self.psi = np.ones(d)
+    def __init__(self):
+        self.d = None
+        self.psi = None
+
+    def initialize(self, X):
+        self.d = X.shape[1]
+        self.psi = np.var(X, axis=0)
 
     def m_step(self, X, W, Ez, Ezz):
         N, self.d = X.shape
@@ -62,6 +67,3 @@ class AnisotropicNoise(NoiseModel):
 
     def as_matrix(self) -> np.ndarray:
         return np.diag(self.psi)
-
-    def initialize(self, X):
-        self.psi = np.var(X, axis=0)
