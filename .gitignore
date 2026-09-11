@@ -1,3 +1,4 @@
 data/
 .mat
 .python-version
+__pycache__/

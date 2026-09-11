@@ -92,15 +92,9 @@ def test_reconstruction_improves_with_more_components(cls, iso_data):
     assert np.all(np.diff(errors) < 0)
 
 
-# --- known defects ---------------------------------------------------------
+# --- n_components handling -------------------------------------------------
 
 @pytest.mark.parametrize('cls', PROBABILISTIC)
-@pytest.mark.xfail(
-    strict=True,
-    reason='ProbabilisticLinearLatentModels.fit requires n_components positionally, '
-           'ignoring the value passed to __init__ -- unlike PCA.fit(X) and the '
-           'abstract fit(self, X) in base.py',
-)
 def test_fit_uses_n_components_from_the_constructor(cls, iso_data):
     X = iso_data['X']
 
@@ -110,11 +104,6 @@ def test_fit_uses_n_components_from_the_constructor(cls, iso_data):
 
 
 @pytest.mark.parametrize('cls', PROBABILISTIC)
-@pytest.mark.xfail(
-    strict=True,
-    reason='fit() reads the loop variable i after the loop, so max_iter=0 raises '
-           'UnboundLocalError instead of returning an unfitted model',
-)
 def test_max_iter_zero_does_not_crash(cls, iso_data):
     X, k = iso_data['X'], iso_data['k']
 
@@ -124,11 +113,6 @@ def test_max_iter_zero_does_not_crash(cls, iso_data):
 
 
 @pytest.mark.parametrize('cls', PROBABILISTIC)
-@pytest.mark.xfail(
-    strict=True,
-    reason='fit() overwrites nothing when n_components disagrees with __init__, '
-           'leaving self.n_components stale and inconsistent with components_',
-)
 def test_n_components_attribute_stays_consistent_with_components(cls, iso_data):
     X = iso_data['X']
 

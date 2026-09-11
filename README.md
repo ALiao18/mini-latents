@@ -18,8 +18,8 @@ from mini_latents.ppca_fa import pPCA, FA
 pca = PCA(n_components=3).fit(X)
 Z = pca.transform(X)
 
-ppca = pPCA(3).fit(X, 3)          # note: pPCA/FA also take k on fit()
-fa = FA(3).fit(X, 3, max_iter=500, tol=1e-8)
+ppca = pPCA(3).fit(X)
+fa = FA(3).fit(X, max_iter=500, tol=1e-8)
 ```
 
 ## Running the tests
@@ -29,10 +29,9 @@ uv sync --group dev
 uv run pytest
 ```
 
-Expect **85 passed, 7 xfailed** in about 5 seconds. Useful variations:
+Expect **95 passed** in about 5 seconds. Useful variations:
 
 ```bash
-uv run pytest -rxX          # also list the xfailed tests and their reasons
 uv run pytest tests/test_fa.py -v
 uv run pytest -k monotone   # run tests matching a name
 ```
@@ -58,19 +57,19 @@ Every assertion is either an analytic invariant (a closed form, monotonicity, a
 reconstruction-error identity) or a comparison against an independent oracle
 (scikit-learn, SciPy, or a slow reference loop) — nothing is a snapshot of
 current output.
+## Attributes after `fit`
 
-### The 7 xfails
+| Attribute | PCA | pPCA / FA |
+|---|---|---|
+| `components_` | `(d, k)`, orthonormal columns | `(d, k)` loading matrix `W` |
+| `explained_variance_` | top-k eigenvalues (`ddof=0`) | — |
+| `noise_variance_` | mean discarded eigenvalue | — |
+| `noise_cov_` | `noise_variance_ * I` | `noise_model.as_matrix()` |
+| `cov_` | full sample covariance (`ddof=0`) | — |
+| `n_iter_`, `log_likelihood_` | — | EM diagnostics |
 
-These are **known defects**, marked `xfail(strict=True)`: they assert the
-intended behavior, so each one turns into a hard failure the moment the
-underlying bug is fixed and the marker should then be removed.
-
-1. `pPCA/FA.fit` requires `n_components` positionally and ignores the value
-   given to `__init__`, unlike `PCA.fit(X)`. `pPCA(2).fit(X, 4)` fits k=4 while
-   `self.n_components` still reads 2.
-2. `fit(..., max_iter=0)` raises `UnboundLocalError` — the loop variable is read
-   after a loop that never ran.
-3. `PCA` never populates the `noise_cov_` / `noise_variance_` attributes
-   declared in `base.__init__`; it assigns `self.cov_` instead.
-
-Run `uv run pytest -rxX` to see the current list with reasons.
+`PCA` builds its covariance with `ddof=0` so that its eigenvalues line up with
+pPCA's EM estimates — `PCA(k).noise_variance_` equals the `sigma^2` that
+`pPCA(k)` converges to on the same data. `sklearn.decomposition.PCA` uses
+`ddof=1`, so its `explained_variance_` is larger by a factor of `N/(N-1)`. Both
+conventions are pinned by tests.
