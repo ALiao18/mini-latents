@@ -1,0 +1,137 @@
+"""Contract-level tests shared across PCA, pPCA and FA, plus known API defects."""
+import numpy as np
+import pytest
+
+from mini_latents.pca import PCA
+from mini_latents.ppca_fa import pPCA, FA
+
+
+def _fit(cls, X, k):
+    '''PCA takes k from the constructor; pPCA/FA require it again on fit().'''
+    model = cls(k)
+    return model.fit(X) if cls is PCA else model.fit(X, k, max_iter=50)
+
+
+PROBABILISTIC = [pPCA, FA]
+ALL_MODELS = [PCA] + PROBABILISTIC
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_fit_returns_self(cls, iso_data):
+    model = cls(iso_data['k'])
+    X, k = iso_data['X'], iso_data['k']
+
+    returned = model.fit(X) if cls is PCA else model.fit(X, k, max_iter=50)
+
+    assert returned is model
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_fit_stores_the_training_mean(cls, iso_data):
+    X = iso_data['X']
+
+    model = _fit(cls, X, iso_data['k'])
+
+    np.testing.assert_allclose(model.mean_, X.mean(axis=0))
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_transform_and_inverse_transform_shapes(cls, iso_data):
+    X, k = iso_data['X'], iso_data['k']
+
+    model = _fit(cls, X, k)
+    Z = model.transform(X)
+
+    assert Z.shape == (len(X), k)
+    assert model.inverse_transform(Z).shape == X.shape
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_components_are_finite(cls, iso_data):
+    model = _fit(cls, iso_data['X'], iso_data['k'])
+
+    assert np.all(np.isfinite(model.components_))
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_fitting_twice_is_deterministic(cls, iso_data):
+    '''No hidden RNG anywhere in fit().'''
+    X, k = iso_data['X'], iso_data['k']
+
+    a = _fit(cls, X, k)
+    b = _fit(cls, X, k)
+
+    np.testing.assert_array_equal(a.components_, b.components_)
+
+
+@pytest.mark.parametrize('cls', ALL_MODELS)
+def test_inverse_transform_accepts_latents_it_did_not_produce(cls, iso_data):
+    '''inverse_transform takes Z as an argument, so transform() need not run first.'''
+    X, k = iso_data['X'], iso_data['k']
+    model = _fit(cls, X, k)
+
+    Z = np.zeros((5, k))
+
+    np.testing.assert_allclose(model.inverse_transform(Z), np.tile(model.mean_, (5, 1)))
+
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+def test_reconstruction_improves_with_more_components(cls, iso_data):
+    '''
+    Not asserted as an exact roundtrip: the E-step shrinks the posterior mean
+    toward the prior, so reconstruction is biased by design -- unlike PCA's
+    orthogonal projection.
+    '''
+    X = iso_data['X']
+
+    errors = []
+    for k in (1, 2, 3, 4):
+        model = cls(k).fit(X, k, max_iter=200, tol=1e-8)
+        errors.append(np.sum((X - model.inverse_transform(model.transform(X))) ** 2))
+
+    assert np.all(np.diff(errors) < 0)
+
+
+# --- known defects ---------------------------------------------------------
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+@pytest.mark.xfail(
+    strict=True,
+    reason='ProbabilisticLinearLatentModels.fit requires n_components positionally, '
+           'ignoring the value passed to __init__ -- unlike PCA.fit(X) and the '
+           'abstract fit(self, X) in base.py',
+)
+def test_fit_uses_n_components_from_the_constructor(cls, iso_data):
+    X = iso_data['X']
+
+    model = cls(3).fit(X)
+
+    assert model.components_.shape == (X.shape[1], 3)
+
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+@pytest.mark.xfail(
+    strict=True,
+    reason='fit() reads the loop variable i after the loop, so max_iter=0 raises '
+           'UnboundLocalError instead of returning an unfitted model',
+)
+def test_max_iter_zero_does_not_crash(cls, iso_data):
+    X, k = iso_data['X'], iso_data['k']
+
+    model = cls(k).fit(X, k, max_iter=0)
+
+    assert model.n_iter_ == 0
+
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+@pytest.mark.xfail(
+    strict=True,
+    reason='fit() overwrites nothing when n_components disagrees with __init__, '
+           'leaving self.n_components stale and inconsistent with components_',
+)
+def test_n_components_attribute_stays_consistent_with_components(cls, iso_data):
+    X = iso_data['X']
+
+    model = cls(2).fit(X, 4, max_iter=20)
+
+    assert model.n_components == model.components_.shape[1]
