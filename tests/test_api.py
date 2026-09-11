@@ -119,3 +119,45 @@ def test_n_components_attribute_stays_consistent_with_components(cls, iso_data):
     model = cls(2).fit(X, 4, max_iter=20)
 
     assert model.n_components == model.components_.shape[1]
+
+
+# --- EM convergence contract -----------------------------------------------
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+def test_negative_tol_runs_every_iteration(cls, iso_data):
+    '''A negative tol disables the early break, for tests that need the optimum.'''
+    X, k = iso_data['X'], iso_data['k']
+
+    model = cls(k).fit(X, max_iter=50, tol=-np.inf)
+
+    assert model.n_iter_ == 50
+
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+def test_tol_is_per_sample(cls, iso_data):
+    '''
+    Tiling the data leaves the sample covariance unchanged, so EM follows an
+    identical trajectory. A per-sample tol therefore stops at the same
+    iteration whatever N is; a raw total would stop later and later.
+    '''
+    X, k = iso_data['X'], iso_data['k']
+
+    counts = {
+        len(Xr): cls(k).fit(Xr, max_iter=5000, tol=1e-9).n_iter_
+        for Xr in (X, np.tile(X, (2, 1)), np.tile(X, (4, 1)))
+    }
+
+    assert len(set(counts.values())) == 1, counts
+
+
+@pytest.mark.parametrize('cls', PROBABILISTIC)
+def test_converged_run_reports_no_monotonicity_violation(cls, iso_data, capsys):
+    '''
+    Once EM is at the optimum the log-likelihood wobbles by a few ulps. That is
+    rounding noise, not a violation, and must not be reported as one.
+    '''
+    X, k = iso_data['X'], iso_data['k']
+
+    cls(k).fit(X, max_iter=600, tol=-np.inf)
+
+    assert 'Bug!' not in capsys.readouterr().out

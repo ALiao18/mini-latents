@@ -3,6 +3,11 @@ from .noise_model import NoiseModel, IsotropicNoise, AnisotropicNoise
 from .em_core import e_step, m_step_W, log_likelihood
 import numpy as np
 
+# A converged EM run leaves the log-likelihood wobbling by a few float64 ulps,
+# which is not a monotonicity violation. Only flag a decrease bigger than this
+# fraction of |log-likelihood| -- a genuine bug moves it far more than this.
+_LL_NOISE = 1e-9
+
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
@@ -12,12 +17,20 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Ez, _ = e_step(Xc, self.components_, self.noise_model.as_matrix())
         return Ez
 
-    def fit(self, X, n_components=None, max_iter=100, tol=1e-4):
+    def fit(self, X, n_components=None, max_iter=100, tol=1e-6):
         '''
         Fit the model using the EM algorithm.
 
         n_components defaults to the value given to __init__; passing it here
         overrides that value and updates self.n_components to match.
+
+        tol is a per-sample log-likelihood gain: EM stops once an iteration
+        improves the average sample's log-likelihood by less than tol. Dividing
+        by N keeps tol meaning the same thing whatever the size of X -- as a raw
+        total it is coarse on small datasets and, on large ones, can fall below
+        the float64 resolution of the log-likelihood itself, at which point the
+        stopping iteration is decided by rounding noise. Pass a negative tol to
+        disable early stopping and always run max_iter iterations.
         '''
         if n_components is None:
             n_components = self.n_components
@@ -39,9 +52,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
             ll = log_likelihood(Xc, W, self.noise_model.as_matrix())
-            if ll - prev_ll < tol:
+            if (ll - prev_ll) / N < tol:
                 break
-            elif ll < prev_ll:
+            elif ll < prev_ll - _LL_NOISE * abs(prev_ll):
                 print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
             prev_ll = ll
 

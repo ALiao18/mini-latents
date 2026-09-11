@@ -12,7 +12,13 @@ from mini_latents.ppca_fa import FA, pPCA
 
 from helpers import em_ll_trace, subspace_dist
 
-TIGHT = dict(max_iter=3000, tol=1e-11)
+# These tests compare a fit against a closed form, against sklearn, or against
+# another fit, so EM has to actually reach the optimum rather than stop near it.
+# fit() stops on a per-sample log-likelihood gain, and in the convergence tail
+# that gain is float64 rounding noise, which makes the stopping iteration vary
+# between machines. A negative tol disables the early break, so every fit here
+# runs the same fixed number of iterations everywhere.
+CONVERGED = dict(max_iter=600, tol=-np.inf)
 
 
 def _implied_cov(model):
@@ -28,7 +34,7 @@ def test_implied_covariance_matches_sklearn(aniso_data):
     '''
     X, k = aniso_data['X'], aniso_data['k']
 
-    ours = FA(k).fit(X, k, **TIGHT)
+    ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
 
     C, C_sk = _implied_cov(ours), theirs.get_covariance()
@@ -38,7 +44,7 @@ def test_implied_covariance_matches_sklearn(aniso_data):
 def test_log_likelihood_matches_sklearn(aniso_data):
     X, k = aniso_data['X'], aniso_data['k']
 
-    ours = FA(k).fit(X, k, **TIGHT)
+    ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
 
     ll = log_likelihood(X - ours.mean_, ours.components_, ours.noise_model.as_matrix())
@@ -48,7 +54,7 @@ def test_log_likelihood_matches_sklearn(aniso_data):
 def test_uniquenesses_match_sklearn(aniso_data):
     X, k = aniso_data['X'], aniso_data['k']
 
-    ours = FA(k).fit(X, k, **TIGHT)
+    ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
 
     np.testing.assert_allclose(ours.noise_model.psi, theirs.noise_variance_, rtol=1e-4)
@@ -74,8 +80,8 @@ def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
     X, k = aniso_data['X'], aniso_data['k']
     Xc = X - X.mean(axis=0)
 
-    fa = FA(k).fit(X, k, **TIGHT)
-    pp = pPCA(k).fit(X, k, **TIGHT)
+    fa = FA(k).fit(X, k, **CONVERGED)
+    pp = pPCA(k).fit(X, k, **CONVERGED)
 
     ll_fa = log_likelihood(Xc, fa.components_, fa.noise_model.as_matrix())
     ll_pp = log_likelihood(Xc, pp.components_, pp.noise_model.as_matrix())
@@ -87,7 +93,7 @@ def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
 def test_recovers_the_generating_subspace(aniso_data):
     X, k, W_true = aniso_data['X'], aniso_data['k'], aniso_data['W_true']
 
-    model = FA(k).fit(X, k, **TIGHT)
+    model = FA(k).fit(X, k, **CONVERGED)
 
     # ||P_A - P_B|| maxes out at sqrt(2k) ~ 2.45 for k=3, so this is a tight
     # subspace match; the residual is finite-sample error and shrinks with N.
@@ -98,7 +104,7 @@ def test_recovers_heteroscedastic_noise(aniso_data):
     '''The whole point of FA: per-feature noise variances, not one shared value.'''
     X, k, psi_true = aniso_data['X'], aniso_data['k'], aniso_data['psi_true']
 
-    model = FA(k).fit(X, k, **TIGHT)
+    model = FA(k).fit(X, k, **CONVERGED)
 
     np.testing.assert_allclose(model.noise_model.psi, psi_true, rtol=0.25, atol=0.02)
 
@@ -114,11 +120,11 @@ def test_is_equivariant_under_per_feature_rescaling(aniso_data):
     X, k = aniso_data['X'], aniso_data['k']
     c = np.array([0.5, 2.0, 1.0, 3.0, 0.25, 1.5, 4.0, 0.75])
 
-    base = FA(k).fit(X, k, **TIGHT)
-    scaled = FA(k).fit(X * c, k, **TIGHT)
+    base = FA(k).fit(X, **CONVERGED)
+    scaled = FA(k).fit(X * c, **CONVERGED)
 
     expected = c[:, None] * _implied_cov(base) * c[None, :]
-    assert np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected) < 1e-6
+    assert np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected) < 1e-9
 
 
 def test_ppca_is_not_scale_equivariant(aniso_data):
@@ -126,8 +132,8 @@ def test_ppca_is_not_scale_equivariant(aniso_data):
     X, k = aniso_data['X'], aniso_data['k']
     c = np.array([0.5, 2.0, 1.0, 3.0, 0.25, 1.5, 4.0, 0.75])
 
-    base = pPCA(k).fit(X, k, **TIGHT)
-    scaled = pPCA(k).fit(X * c, k, **TIGHT)
+    base = pPCA(k).fit(X, **CONVERGED)
+    scaled = pPCA(k).fit(X * c, **CONVERGED)
 
     expected = c[:, None] * _implied_cov(base) * c[None, :]
     assert np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected) > 1e-2
@@ -142,13 +148,13 @@ def test_reduces_to_ppca_when_noise_is_isotropic(iso_data, aniso_data):
     '''
     X, k = iso_data['X'], iso_data['k']
 
-    fa = FA(k).fit(X, k, **TIGHT)
-    pp = pPCA(k).fit(X, k, **TIGHT)
+    fa = FA(k).fit(X, k, **CONVERGED)
+    pp = pPCA(k).fit(X, k, **CONVERGED)
 
     assert subspace_dist(fa.components_, pp.components_) < 0.15
 
     def dispersion(psi):
         return psi.std() / psi.mean()
 
-    fa_aniso = FA(k).fit(aniso_data['X'], k, **TIGHT)
+    fa_aniso = FA(k).fit(aniso_data['X'], k, **CONVERGED)
     assert dispersion(fa.noise_model.psi) < 0.5 * dispersion(fa_aniso.noise_model.psi)
