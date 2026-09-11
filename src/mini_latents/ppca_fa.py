@@ -3,9 +3,6 @@ from .noise_model import NoiseModel, IsotropicNoise, AnisotropicNoise
 from .em_core import e_step, m_step_W, log_likelihood
 import numpy as np
 
-# A converged EM run leaves the log-likelihood wobbling by a few float64 ulps,
-# which is not a monotonicity violation. Only flag a decrease bigger than this
-# fraction of |log-likelihood| -- a genuine bug moves it far more than this.
 _LL_NOISE = 1e-9
 
 
@@ -21,16 +18,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         '''
         Fit the model using the EM algorithm.
 
-        n_components defaults to the value given to __init__; passing it here
-        overrides that value and updates self.n_components to match.
-
-        tol is a per-sample log-likelihood gain: EM stops once an iteration
-        improves the average sample's log-likelihood by less than tol. Dividing
-        by N keeps tol meaning the same thing whatever the size of X -- as a raw
-        total it is coarse on small datasets and, on large ones, can fall below
-        the float64 resolution of the log-likelihood itself, at which point the
-        stopping iteration is decided by rounding noise. Pass a negative tol to
-        disable early stopping and always run max_iter iterations.
+        params:
+        - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
+        - tol         : per-sample log-likelihood gain. Stopping criteria for EM
         '''
         if n_components is None:
             n_components = self.n_components
@@ -42,6 +32,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
+        self.ll_history_ = []
 
         prev_ll = -np.inf
         i = -1                                  # so max_iter=0 leaves n_iter_ at 0
@@ -52,6 +43,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
             ll = log_likelihood(Xc, W, self.noise_model.as_matrix())
+            self.ll_history_.append(ll)
             if (ll - prev_ll) / N < tol:
                 break
             elif ll < prev_ll - _LL_NOISE * abs(prev_ll):
