@@ -4,6 +4,7 @@ import pytest
 from sklearn.decomposition import PCA as SklearnPCA
 
 from mini_latents.pca import PCA
+from mini_latents.ppca_fa import pPCA
 
 
 def test_components_shape_and_orthonormality(iso_data):
@@ -145,17 +146,43 @@ def test_reconstruction_error_decreases_with_more_components(iso_data):
     assert np.all(np.diff(errors) < 1e-9)
 
 
-# --- known defect ----------------------------------------------------------
+# --- residual noise --------------------------------------------------------
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='PCA.fit assigns self.cov_ and never populates the noise_cov_ / '
-           'noise_variance_ attributes declared in base.__init__ (hw8.ipynb reads noise_cov_)',
-)
-def test_pca_populates_noise_attributes(iso_data):
+def test_noise_variance_is_the_mean_discarded_eigenvalue(iso_data):
     X, k = iso_data['X'], iso_data['k']
 
     pca = PCA(k).fit(X)
 
-    assert pca.noise_cov_ is not None
-    assert pca.noise_variance_ is not None
+    eigvals = np.sort(np.linalg.eigvalsh(np.cov(X, rowvar=False, ddof=0)))[::-1]
+    np.testing.assert_allclose(pca.noise_variance_, eigvals[k:].mean(), rtol=1e-10)
+
+
+def test_noise_cov_is_the_isotropic_residual(iso_data):
+    X, k = iso_data['X'], iso_data['k']
+    d = X.shape[1]
+
+    pca = PCA(k).fit(X)
+
+    np.testing.assert_allclose(pca.noise_cov_, pca.noise_variance_ * np.eye(d))
+
+
+def test_noise_variance_is_zero_at_full_rank(iso_data):
+    '''Nothing is discarded, so there is no residual left to spread.'''
+    X = iso_data['X']
+
+    pca = PCA(X.shape[1]).fit(X)
+
+    assert pca.noise_variance_ == 0.0
+
+
+def test_noise_variance_matches_ppca(iso_data):
+    '''
+    PCA's residual variance is exactly the sigma^2 that pPCA's EM converges to;
+    the two agree because both are built on a ddof=0 covariance.
+    '''
+    X, k = iso_data['X'], iso_data['k']
+
+    pca = PCA(k).fit(X)
+    ppca = pPCA(k).fit(X, max_iter=2000, tol=1e-12)
+
+    np.testing.assert_allclose(pca.noise_variance_, ppca.noise_model.psi, rtol=1e-6)

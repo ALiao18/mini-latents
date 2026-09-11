@@ -12,10 +12,17 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Ez, _ = e_step(Xc, self.components_, self.noise_model.as_matrix())
         return Ez
 
-    def fit(self, X, n_components, max_iter=100, tol=1e-4):
+    def fit(self, X, n_components=None, max_iter=100, tol=1e-4):
         '''
         Fit the model using the EM algorithm.
+
+        n_components defaults to the value given to __init__; passing it here
+        overrides that value and updates self.n_components to match.
         '''
+        if n_components is None:
+            n_components = self.n_components
+        self.n_components = n_components
+
         self.mean_ = X.mean(axis=0)
         Xc = X - self.mean_
         N, d = Xc.shape
@@ -24,6 +31,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         self.noise_model.initialize(Xc)
 
         prev_ll = -np.inf
+        i = -1                                  # so max_iter=0 leaves n_iter_ at 0
         for i in range(max_iter):
             Psi = self.noise_model.as_matrix()
             Ez, Ezz = e_step(Xc, W, Psi)
