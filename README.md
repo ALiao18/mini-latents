@@ -1,6 +1,6 @@
 # mini-latents
 
-From-scratch implementations of three linear latent variable models:
+From-scratch implementations of
 
 | Model | Noise covariance `Ψ` | Fitted by |
 |---|---|---|
@@ -52,40 +52,3 @@ no reinstall needed after an edit.
 | `tests/test_ppca.py` | the Tipping–Bishop closed form, EM monotonicity, the σ→0 limit |
 | `tests/test_fa.py` | agreement with `sklearn.FactorAnalysis`, per-feature scale equivariance |
 | `tests/test_api.py` | contracts shared by all three models |
-
-Every assertion is either an analytic invariant (a closed form, monotonicity, a
-reconstruction-error identity) or a comparison against an independent oracle
-(scikit-learn, SciPy, or a slow reference loop) — nothing is a snapshot of
-current output.
-## EM convergence
-
-`pPCA.fit` and `FA.fit` stop when an iteration improves the **per-sample**
-log-likelihood by less than `tol` (default `1e-6`). The per-sample
-normalisation matters: as a raw total, the same `tol` is coarse on a small
-dataset and, on a large one, can fall below the float64 resolution of the
-log-likelihood itself — at which point EM is comparing rounding noise and the
-iteration it stops on varies between machines.
-
-Pass a negative `tol` to disable early stopping and always run `max_iter`
-iterations. The tests that need EM to sit exactly at the optimum use that, so
-they converge identically everywhere.
-
-FA converges more slowly than pPCA and often wants `max_iter` above the
-default of 100.
-
-## Attributes after `fit`
-
-| Attribute | PCA | pPCA / FA |
-|---|---|---|
-| `components_` | `(d, k)`, orthonormal columns | `(d, k)` loading matrix `W` |
-| `explained_variance_` | top-k eigenvalues (`ddof=0`) | — |
-| `noise_variance_` | mean discarded eigenvalue | — |
-| `noise_cov_` | `noise_variance_ * I` | `noise_model.as_matrix()` |
-| `cov_` | full sample covariance (`ddof=0`) | — |
-| `n_iter_`, `log_likelihood_` | — | EM diagnostics |
-
-`PCA` builds its covariance with `ddof=0` so that its eigenvalues line up with
-pPCA's EM estimates — `PCA(k).noise_variance_` equals the `sigma^2` that
-`pPCA(k)` converges to on the same data. `sklearn.decomposition.PCA` uses
-`ddof=1`, so its `explained_variance_` is larger by a factor of `N/(N-1)`. Both
-conventions are pinned by tests.
