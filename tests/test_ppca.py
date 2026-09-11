@@ -14,7 +14,13 @@ from mini_latents.ppca_fa import pPCA
 
 from helpers import em_ll_trace, subspace_dist
 
-TIGHT = dict(max_iter=2000, tol=1e-12)
+# These tests compare a fit against a closed form, against sklearn, or against
+# another fit, so EM has to actually reach the optimum rather than stop near it.
+# fit() stops on a per-sample log-likelihood gain, and in the convergence tail
+# that gain is float64 rounding noise, which makes the stopping iteration vary
+# between machines. A negative tol disables the early break, so every fit here
+# runs the same fixed number of iterations everywhere.
+CONVERGED = dict(max_iter=600, tol=-np.inf)
 
 
 def _spectrum(X):
@@ -29,7 +35,7 @@ def test_noise_variance_is_the_mean_discarded_eigenvalue(iso_data):
     '''sigma^2_ML = (1 / (d - k)) * sum_{j>k} lambda_j.'''
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     np.testing.assert_allclose(model.noise_model.psi, _spectrum(X)[k:].mean(), rtol=1e-6)
 
@@ -38,7 +44,7 @@ def test_loading_singular_values_match_closed_form(iso_data):
     '''The singular values of W_ML are sqrt(lambda_i - sigma^2).'''
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     eigvals = _spectrum(X)
     sigma2 = eigvals[k:].mean()
@@ -53,7 +59,7 @@ def test_subspace_matches_pca(iso_data):
     '''W_ML spans the same subspace as the top-k principal components.'''
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     assert subspace_dist(model.components_, PCA(k).fit(X).components_) < 1e-8
 
@@ -67,7 +73,7 @@ def test_implied_covariance_matches_sklearn_pca(iso_data):
     X, k = iso_data['X'], iso_data['k']
     N = len(X)
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
     C = model.components_ @ model.components_.T + model.noise_model.as_matrix()
 
     C_sk = SklearnPCA(n_components=k).fit(X).get_covariance()
@@ -97,7 +103,7 @@ def test_em_improves_on_its_initialization(iso_data):
     noise.initialize(Xc)
     ll_start = log_likelihood(Xc, W0, noise.as_matrix())
 
-    model.fit(X, k, **TIGHT)
+    model.fit(X, k, **CONVERGED)
     ll_end = log_likelihood(Xc, model.components_, model.noise_model.as_matrix())
 
     assert ll_end > ll_start
@@ -106,7 +112,7 @@ def test_em_improves_on_its_initialization(iso_data):
 def test_reported_log_likelihood_matches_final_parameters(iso_data):
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     recomputed = log_likelihood(
         X - model.mean_, model.components_, model.noise_model.as_matrix()
@@ -135,7 +141,7 @@ def test_stops_early_once_converged(iso_data):
 def test_recovers_the_generating_subspace(iso_data):
     X, k, W_true = iso_data['X'], iso_data['k'], iso_data['W_true']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     assert subspace_dist(model.components_, W_true) < 0.1
 
@@ -143,7 +149,7 @@ def test_recovers_the_generating_subspace(iso_data):
 def test_recovers_the_generating_noise_variance(iso_data):
     X, k, psi_true = iso_data['X'], iso_data['k'], iso_data['psi_true']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     np.testing.assert_allclose(model.noise_model.psi, psi_true, rtol=0.15)
 
@@ -155,7 +161,7 @@ def test_collapses_onto_pca_as_noise_vanishes(tiny_noise_data):
     '''
     X, k = tiny_noise_data['X'], tiny_noise_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     assert subspace_dist(model.components_, PCA(k).fit(X).components_) < 1e-6
     assert model.noise_model.psi < 1e-8
@@ -166,7 +172,7 @@ def test_converges_across_ranks(iso_data, k):
     '''Including the boundaries k=1 and k=d-1.'''
     X = iso_data['X']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
 
     assert model.components_.shape == (X.shape[1], k)
     assert np.all(np.isfinite(model.components_))
@@ -176,7 +182,7 @@ def test_converges_across_ranks(iso_data, k):
 def test_transform_and_inverse_transform_shapes(iso_data):
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
     Z = model.transform(X)
 
     assert Z.shape == (len(X), k)
@@ -186,7 +192,7 @@ def test_transform_and_inverse_transform_shapes(iso_data):
 def test_reconstruction_beats_the_mean_only_baseline(iso_data):
     X, k = iso_data['X'], iso_data['k']
 
-    model = pPCA(k).fit(X, k, **TIGHT)
+    model = pPCA(k).fit(X, k, **CONVERGED)
     recon_err = np.sum((X - model.inverse_transform(model.transform(X))) ** 2)
 
     assert recon_err < np.sum((X - X.mean(axis=0)) ** 2)

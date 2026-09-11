@@ -29,7 +29,7 @@ uv sync --group dev
 uv run pytest
 ```
 
-Expect **95 passed** in about 5 seconds. Useful variations:
+Expect **101 passed** in about 9 seconds. Useful variations:
 
 ```bash
 uv run pytest tests/test_fa.py -v
@@ -57,6 +57,22 @@ Every assertion is either an analytic invariant (a closed form, monotonicity, a
 reconstruction-error identity) or a comparison against an independent oracle
 (scikit-learn, SciPy, or a slow reference loop) — nothing is a snapshot of
 current output.
+## EM convergence
+
+`pPCA.fit` and `FA.fit` stop when an iteration improves the **per-sample**
+log-likelihood by less than `tol` (default `1e-6`). The per-sample
+normalisation matters: as a raw total, the same `tol` is coarse on a small
+dataset and, on a large one, can fall below the float64 resolution of the
+log-likelihood itself — at which point EM is comparing rounding noise and the
+iteration it stops on varies between machines.
+
+Pass a negative `tol` to disable early stopping and always run `max_iter`
+iterations. The tests that need EM to sit exactly at the optimum use that, so
+they converge identically everywhere.
+
+FA converges more slowly than pPCA and often wants `max_iter` above the
+default of 100.
+
 ## Attributes after `fit`
 
 | Attribute | PCA | pPCA / FA |
