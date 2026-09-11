@@ -3,9 +3,6 @@ from .noise_model import NoiseModel, IsotropicNoise, AnisotropicNoise
 from .em_core import e_step, m_step_W, log_likelihood
 import numpy as np
 
-# A converged EM run leaves the log-likelihood wobbling by a few float64 ulps,
-# which is not a monotonicity violation. Only flag a decrease bigger than this
-# fraction of |log-likelihood| -- a genuine bug moves it far more than this.
 _LL_NOISE = 1e-9
 
 
@@ -42,6 +39,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
+        self.ll_history_ = []
 
         prev_ll = -np.inf
         i = -1                                  # so max_iter=0 leaves n_iter_ at 0
@@ -52,6 +50,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
             ll = log_likelihood(Xc, W, self.noise_model.as_matrix())
+            self.ll_history_.append(ll)
             if (ll - prev_ll) / N < tol:
                 break
             elif ll < prev_ll - _LL_NOISE * abs(prev_ll):
