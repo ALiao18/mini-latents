@@ -44,10 +44,11 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
             ll = log_likelihood(Xc, W, self.noise_model.as_matrix())
             self.ll_history_.append(ll)
+            if ll < prev_ll - _LL_NOISE * abs(prev_ll):
+                print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
             if (ll - prev_ll) / N < tol:
                 break
-            elif ll < prev_ll - _LL_NOISE * abs(prev_ll):
-                print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
+                
             prev_ll = ll
 
         self.components_ = W
