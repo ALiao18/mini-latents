@@ -17,6 +17,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
     def fit(self, X, n_components=None, max_iter=100, tol=1e-6):
         '''
         Fit the model using the EM algorithm.
+        1. center the data to mu = 0
+        2. initialize W using self._init_W(Xc)
 
         params:
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
@@ -26,10 +28,12 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             n_components = self.n_components
         self.n_components = n_components
 
-        self.mean_ = X.mean(axis=0)
-        Xc = X - self.mean_
-        N, d = Xc.shape
+        # zero mean the data
+        self.mean_ = X.mean(axis=0) # (d,)
+        Xc = X - self.mean_         # (N, d) broadcast over rows
+        N, _ = Xc.shape
 
+        # xyz initialize W: correlation matrix 
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
         self.ll_history_ = []
@@ -46,7 +50,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             self.ll_history_.append(ll)
             if ll < prev_ll - _LL_NOISE * abs(prev_ll):
                 print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
+                prev_ll = ll
             if (ll - prev_ll) / N < tol:
+                prev_ll = ll
                 break
                 
             prev_ll = ll
@@ -57,19 +63,44 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         return self
 
     def _init_W(self, Xc, n_components):
-        N, d = Xc.shape
-        cov = Xc.T @ Xc / N                     # (d, d), symmetric
+        '''
+        initializes Weight matrix using PCA initialization 
+        (closed-form max. likelihood solution for pPCA) (Tipping & Bishop, 1999)
 
-        eigvals, eigvecs = np.linalg.eigh(cov)  # ascending order
+        W = U_k*(Λ_k - sigma^2*I)**(1/2)*R
+
+        U_k (d,k): top-k eigenvectors of covariance matrix
+        Λ_k (k,k): top-k eigenvalues
+        σ²       : mean of discarded eigenvalues
+        R   (k,k): orthogonal matrix
+
+        params:
+        - Xc (N, d): X, mean centered
+        - n_componenets: n principal components to retain
+
+        returns:
+        - W (d,k): weight matrix initialization
+        '''
+        N, _ = Xc.shape
+
+        S = Xc.T @ Xc / N                                   # (d, d), symmetric sample covariance
+        eigvals, eigvecs = np.linalg.eigh(S)                # ascending 
+        eigvals, eigvecs = eigvals[::-1], eigvecs[:, ::-1]  # descending: eigvals (d,), eigvecs (d,d)
+
+        # max likelihood
 
         # eigh returns smallest-first; take the top n_components
         idx = np.argsort(eigvals)[::-1][:n_components]
         top_eigvals = eigvals[idx]
         top_eigvecs = eigvecs[:, idx]
 
+        discarded_eigvals = eigvals[-idx].flatten()
+        sigma_squared = np.mean(discarded_eigvals)
         top_eigvals = np.clip(top_eigvals, a_min=1e-8, a_max=None) 
-        W = top_eigvecs * np.sqrt(top_eigvals)
-        return W
+        R = np.eye(n_components)
+
+        W = top_eigvecs * np.sqrt(top_eigvals - sigma_squared * np.eye())*R # (d,k)
+        return W # (d,k)
 
 
 class pPCA(ProbabilisticLinearLatentModels):
