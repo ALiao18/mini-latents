@@ -16,16 +16,22 @@ class NoiseModel(ABC):
         '''
 
     @abstractmethod
-    def as_matrix(self) -> np.ndarray:
-        '''
-        Return the noise covariance matrix
-        '''
-
-    @abstractmethod
     def initialize(self, X: np.ndarray):
         '''
         Initialize the noise model parameters based on X
         '''
+
+    @abstractmethod
+    def noise_as_vec(self):
+        '''
+        returns diagonal as a (d,) vector
+        '''
+
+    def as_matrix(self):
+        '''
+        Returns dxd noise covariance matrix
+        '''
+        return np.diag(self.noise_as_vec())
 
 class IsotropicNoise(NoiseModel):
     def __init__(self):
@@ -45,8 +51,9 @@ class IsotropicNoise(NoiseModel):
         S = recon_term - cross_term + trace_term
         self.psi = S / (N * d)
 
-    def as_matrix(self) -> np.ndarray:
-        return self.psi * np.eye(self.d)
+    def noise_as_vec(self):
+        return np.full(self.d, self.psi) # (d,)
+    
 
 class AnisotropicNoise(NoiseModel):
     def __init__(self):
@@ -54,6 +61,7 @@ class AnisotropicNoise(NoiseModel):
         self.psi = None
 
     def initialize(self, X):
+
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0)
 
@@ -65,5 +73,5 @@ class AnisotropicNoise(NoiseModel):
         S = recon - cross + quad
         self.psi = S / N                                      # (d,)
 
-    def as_matrix(self) -> np.ndarray:
-        return np.diag(self.psi)
+    def noise_as_vec(self):
+        return self.psi

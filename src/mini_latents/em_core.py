@@ -17,26 +17,28 @@ def _sym_inv_logdet(A: np.ndarray, eps: float = 1e-10):
     logdet = np.sum(np.log(eigvals))
     return A_inv, logdet
 
-def e_step(X: np.ndarray, W: np.ndarray, Psi: np.ndarray):
+def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     """
     Compute posterior over latent variables z | x for each sample.
 
     Params
     ------
-    X:   centered data matrix (N, d)
-    W:   current loading matrix (d, k)
-    Psi: current noise covariance (d, d), from noise_model.as_matrix()
+    X   (N,d): centered data matrix 
+    W   (d,k): current loading matrix 
+    psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
 
     Returns
     -------
     Ez:  posterior mean, (N, k)
     Ezz: posterior second moment E[z z^T], (N, k, k)
     """
-    N, d = X.shape
+    if psi.ndim != 1: 
+        raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
+    
     k = W.shape[1]
 
-    Psi_inv, _ = _sym_inv_logdet(Psi)
-    Psi_inv_W = Psi_inv @ W                            # (d, k)
+    psi_inv   = 1/psi                            # (d,)
+    Psi_inv_W = psi_inv[:, None] * W             # (d,k), O(dk)
 
     M_inv = np.eye(k) + W.T @ Psi_inv_W                # (k, k), symmetric PD
     M, _ = _sym_inv_logdet(M_inv)                      # posterior covariance, shared across samples
@@ -59,14 +61,24 @@ def m_step_W(X: np.ndarray, Ez: np.ndarray, Ezz: np.ndarray) -> np.ndarray:
     W_new = sum_xEz @ sum_Ezz_inv
     return W_new
 
-def log_likelihood(X: np.ndarray, W: np.ndarray, Psi: np.ndarray) -> float:
+def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     """
     Marginal log-likelihood under the model, with z integrated out:
         x ~ N(0, C),   C = W W^T + Psi
 
     Used for EM convergence monitoring (should increase monotonically
     each iteration).
+
+    Params
+    ------
+    X   (N,d): centered data matrix
+    W   (d,k): current loading matrix
+    psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
     """
+    if psi.ndim != 1: 
+            raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
+    
+    Psi = np.diag(psi)
     N, d = X.shape
     C = W @ W.T + Psi
 

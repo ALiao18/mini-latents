@@ -14,8 +14,8 @@ def em_state():
     X = rng.normal(size=(N, d)) @ rng.normal(size=(d, d))
     X = X - X.mean(axis=0)
     W = rng.normal(size=(d, k))
-    Psi = np.diag(rng.uniform(0.4, 1.1, size=d))
-    Ez, Ezz = e_step(X, W, Psi)
+    psi = rng.uniform(0.4, 1.1, size=d)
+    Ez, Ezz = e_step(X, W, psi)
     return X, W, Ez, Ezz
 
 
@@ -132,4 +132,4 @@ def test_m_step_keeps_variances_positive(cls, em_state):
     noise.initialize(X)
     noise.m_step(X, W, Ez, Ezz)
 
-    assert np.all(np.asarray(noise.psi) > 0)
+    assert np.all(noise.psi > 0)

@@ -47,7 +47,7 @@ def test_log_likelihood_matches_sklearn(aniso_data):
     ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
 
-    ll = log_likelihood(X - ours.mean_, ours.components_, ours.noise_model.as_matrix())
+    ll = log_likelihood(X - ours.mean_, ours.components_, ours.noise_model.noise_as_vec())
     np.testing.assert_allclose(ll, theirs.score(X) * len(X), rtol=1e-8)
 
 
@@ -83,8 +83,8 @@ def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
     fa = FA(k).fit(X, k, **CONVERGED)
     pp = pPCA(k).fit(X, k, **CONVERGED)
 
-    ll_fa = log_likelihood(Xc, fa.components_, fa.noise_model.as_matrix())
-    ll_pp = log_likelihood(Xc, pp.components_, pp.noise_model.as_matrix())
+    ll_fa = log_likelihood(Xc, fa.components_, fa.noise_model.noise_as_vec())
+    ll_pp = log_likelihood(Xc, pp.components_, pp.noise_model.noise_as_vec())
     assert ll_fa > ll_pp
 
 

@@ -101,10 +101,11 @@ def test_em_improves_on_its_initialization(iso_data):
     W0 = model._init_W(Xc, k)
     noise = IsotropicNoise()
     noise.initialize(Xc)
-    ll_start = log_likelihood(Xc, W0, noise.as_matrix())
+    psi = noise.noise_as_vec()
+    ll_start = log_likelihood(Xc, W0, psi)
 
     model.fit(X, k, **CONVERGED)
-    ll_end = log_likelihood(Xc, model.components_, model.noise_model.as_matrix())
+    ll_end = log_likelihood(Xc, model.components_, model.noise_model.noise_as_vec())
 
     assert ll_end > ll_start
 
@@ -115,7 +116,7 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
     model = pPCA(k).fit(X, k, **CONVERGED)
 
     recomputed = log_likelihood(
-        X - model.mean_, model.components_, model.noise_model.as_matrix()
+        X - model.mean_, model.components_, model.noise_model.noise_as_vec()
     )
     np.testing.assert_allclose(model.log_likelihood_, recomputed, rtol=1e-9)
 

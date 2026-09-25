@@ -8,14 +8,14 @@ from mini_latents.em_core import _sym_inv_logdet, e_step, m_step_W, log_likeliho
 
 @pytest.fixture
 def wpsi():
-    '''A centered dataset with a matching (W, Psi) parameter pair.'''
+    '''A centered dataset with a matching (W, psi) parameter pair.'''
     rng = np.random.default_rng(10)
     N, d, k = 40, 6, 3
     X = rng.normal(size=(N, d))
     X = X - X.mean(axis=0)
     W = rng.normal(size=(d, k))
-    Psi = np.diag(rng.uniform(0.3, 1.2, size=d))
-    return X, W, Psi
+    psi = rng.uniform(0.3, 1.2, size=d)
+    return X, W, psi
 
 
 # --- _sym_inv_logdet -------------------------------------------------------
@@ -56,10 +56,10 @@ def test_sym_inv_logdet_clips_singular_matrix():
 # --- e_step ----------------------------------------------------------------
 
 def test_e_step_shapes(wpsi):
-    X, W, Psi = wpsi
+    X, W, psi = wpsi
     N, k = X.shape[0], W.shape[1]
 
-    Ez, Ezz = e_step(X, W, Psi)
+    Ez, Ezz = e_step(X, W, psi)
 
     assert Ez.shape == (N, k)
     assert Ezz.shape == (N, k, k)
@@ -67,12 +67,12 @@ def test_e_step_shapes(wpsi):
 
 def test_e_step_matches_textbook_form(wpsi):
     '''M = (I + W^T Psi^-1 W)^-1,  E[z_i] = M W^T Psi^-1 x_i.'''
-    X, W, Psi = wpsi
+    X, W,psi = wpsi
     k = W.shape[1]
 
-    Ez, _ = e_step(X, W, Psi)
+    Ez, _ = e_step(X, W, psi)
 
-    Psi_inv = np.linalg.inv(Psi)
+    Psi_inv = np.diag(1/psi)
     M = np.linalg.inv(np.eye(k) + W.T @ Psi_inv @ W)
     expected = np.array([M @ W.T @ Psi_inv @ x for x in X])
     np.testing.assert_allclose(Ez, expected, rtol=1e-9, atol=1e-11)
@@ -85,22 +85,23 @@ def test_e_step_matches_woodbury_form(wpsi):
     Algebraically the same posterior as the textbook form, but reached by a
     different route -- so a transposed or misplaced factor shows up here.
     '''
-    X, W, Psi = wpsi
+    X, W, psi = wpsi
 
-    Ez, _ = e_step(X, W, Psi)
+    Ez, _ = e_step(X, W, psi)
 
-    C_inv = np.linalg.inv(W @ W.T + Psi)
+    C = W @ W.T + np.diag(psi)
+    C_inv = np.linalg.inv(C)
     np.testing.assert_allclose(Ez, X @ C_inv @ W, rtol=1e-9, atol=1e-11)
 
 
 def test_e_step_second_moment_decomposition(wpsi):
     '''E[z z^T] = Cov(z|x) + E[z] E[z]^T, with the covariance shared by all samples.'''
-    X, W, Psi = wpsi
+    X, W, psi = wpsi
     k = W.shape[1]
 
-    Ez, Ezz = e_step(X, W, Psi)
+    Ez, Ezz = e_step(X, W, psi)
 
-    Psi_inv = np.linalg.inv(Psi)
+    Psi_inv = np.diag(1/psi)
     M = np.linalg.inv(np.eye(k) + W.T @ Psi_inv @ W)
     expected = M[None, :, :] + np.einsum('nk,nl->nkl', Ez, Ez)
     np.testing.assert_allclose(Ezz, expected, rtol=1e-9, atol=1e-11)
@@ -123,8 +124,8 @@ def test_e_step_shrinks_toward_prior():
     X = X - X.mean(axis=0)
     W = rng.normal(size=(4, 2))
 
-    Ez_loud, _ = e_step(X, W, 1e4 * np.eye(4))
-    Ez_quiet, _ = e_step(X, W, 1e-2 * np.eye(4))
+    Ez_loud, _ = e_step(X, W, np.full(4, 1e4))
+    Ez_quiet, _ = e_step(X, W, np.full(4, 1e-2))
 
     assert np.abs(Ez_loud).max() < np.abs(Ez_quiet).max()
     assert np.abs(Ez_loud).max() < 1e-2
@@ -165,12 +166,12 @@ def test_m_step_W_recovers_exact_loading_in_noiseless_limit():
 # --- log_likelihood --------------------------------------------------------
 
 def test_log_likelihood_matches_scipy(wpsi):
-    X, W, Psi = wpsi
-    C = W @ W.T + Psi
+    X, W, psi = wpsi
+    C = W @ W.T + np.diag(psi)
 
-    ll = log_likelihood(X, W, Psi)
+    ll = log_likelihood(X, W, psi)
 
-    expected = multivariate_normal(mean=np.zeros(len(C)), cov=C).logpdf(X).sum()
+    expected = multivariate_normal(mean=np.zeros(len(C)), cov=C).logpdf(X).sum() 
     np.testing.assert_allclose(ll, expected, rtol=1e-9)
 
 
@@ -180,9 +181,9 @@ def test_log_likelihood_prefers_the_true_covariance():
     W_true = rng.normal(size=(6, 2))
     X = rng.normal(size=(400, 2)) @ W_true.T + 0.3 * rng.normal(size=(400, 6))
     X = X - X.mean(axis=0)
-    Psi = 0.09 * np.eye(6)
+    psi = np.full(6, 0.09)
 
-    ll_true = log_likelihood(X, W_true, Psi)
-    ll_wrong = log_likelihood(X, rng.normal(size=(6, 2)), Psi)
+    ll_true = log_likelihood(X, W_true, psi)
+    ll_wrong = log_likelihood(X, rng.normal(size=(6, 2)), psi)
 
     assert ll_true > ll_wrong

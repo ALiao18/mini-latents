@@ -33,8 +33,8 @@ def em_ll_trace(noise_model, Xc: np.ndarray, W0: np.ndarray, n_iter: int) -> np.
     W = W0
     lls = []
     for _ in range(n_iter):
-        Ez, Ezz = e_step(Xc, W, noise_model.as_matrix())
+        Ez, Ezz = e_step(Xc, W, noise_model.noise_as_vec())
         W = m_step_W(Xc, Ez, Ezz)
         noise_model.m_step(Xc, W, Ez, Ezz)
-        lls.append(log_likelihood(Xc, W, noise_model.as_matrix()))
+        lls.append(log_likelihood(Xc, W, noise_model.noise_as_vec()))
     return np.array(lls)

@@ -11,7 +11,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
     def transform(self, X):
         Xc = X - self.mean_
-        Ez, _ = e_step(Xc, self.components_, self.noise_model.as_matrix())
+        Ez, _ = e_step(Xc, self.components_, self.noise_model.noise_as_vec())
         return Ez
 
     def fit(self, X, n_components=None, max_iter=100, tol=1e-6):
@@ -33,7 +33,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Xc = X - self.mean_         # (N, d) broadcast over rows
         N, _ = Xc.shape
 
-        # xyz initialize W: correlation matrix 
+        # xyz initialize W: covariance matrix 
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
         self.ll_history_ = []
@@ -41,12 +41,12 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         prev_ll = -np.inf
         i = -1                                  # so max_iter=0 leaves n_iter_ at 0
         for i in range(max_iter):
-            Psi = self.noise_model.as_matrix()
-            Ez, Ezz = e_step(Xc, W, Psi)
+            psi = self.noise_model.noise_as_vec() # (d,)
+            Ez, Ezz = e_step(Xc, W, psi)
             W = m_step_W(Xc, Ez, Ezz)
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
-            ll = log_likelihood(Xc, W, self.noise_model.as_matrix())
+            ll = log_likelihood(Xc, W, self.noise_model.noise_as_vec())
             self.ll_history_.append(ll)
             if ll < prev_ll - _LL_NOISE * abs(prev_ll):
                 print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
@@ -72,7 +72,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         U_k (d,k): top-k eigenvectors of covariance matrix
         Λ_k (k,k): top-k eigenvalues
         σ²       : mean of discarded eigenvalues
-        R   (k,k): orthogonal matrix
+        R   (k,k): orthogonal matrix. We just choose I in this case
 
         params:
         - Xc (N, d): X, mean centered
@@ -81,26 +81,20 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         returns:
         - W (d,k): weight matrix initialization
         '''
-        N, _ = Xc.shape
+        N, d = Xc.shape
 
         S = Xc.T @ Xc / N                                   # (d, d), symmetric sample covariance
         eigvals, eigvecs = np.linalg.eigh(S)                # ascending 
         eigvals, eigvecs = eigvals[::-1], eigvecs[:, ::-1]  # descending: eigvals (d,), eigvecs (d,d)
 
-        # max likelihood
+        # max likelihood noise variance = mean(discarded eigenvalues)
+        sigma2 = eigvals[n_components:].mean() if n_components < d else 0.0 # scalar
 
-        # eigh returns smallest-first; take the top n_components
-        idx = np.argsort(eigvals)[::-1][:n_components]
-        top_eigvals = eigvals[idx]
-        top_eigvecs = eigvecs[:, idx]
+        # Λ_k - sigma^2*I 
+        scale = np.clip(eigvals[:n_components] - sigma2, 1e-12, None) # (n_components,)
 
-        discarded_eigvals = eigvals[-idx].flatten()
-        sigma_squared = np.mean(discarded_eigvals)
-        top_eigvals = np.clip(top_eigvals, a_min=1e-8, a_max=None) 
-        R = np.eye(n_components)
-
-        W = top_eigvecs * np.sqrt(top_eigvals - sigma_squared * np.eye())*R # (d,k)
-        return W # (d,k)
+        W = eigvecs[:,:n_components] * np.sqrt(scale)                 # (d, k)
+        return W 
 
 
 class pPCA(ProbabilisticLinearLatentModels):
