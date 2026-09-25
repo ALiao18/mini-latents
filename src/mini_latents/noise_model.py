@@ -66,12 +66,41 @@ class AnisotropicNoise(NoiseModel):
         self.psi = np.var(X, axis=0)
 
     def m_step(self, X, W, Ez, Ezz):
+        """
+        FA noise update. O(dk)
+        
+        psi_j = expected squared residual (R_j) of feature j, summed over samples
+
+        R_j = recon - cross + quad
+            recon = sum_n x_nj**2
+            cross = 2 w_j^T (sum_n <z_n> x_nj)
+            quad  = w_j^T (sum_n < z_n z_n^T>) w_j
+
+        Params
+        ------
+        X   (N,d): centered data
+        W   (d,k): loading matrix. 
+        Ez  (N,k): posterior means <z_n>
+        Ezz (N,k,k): posterior second moments <z_n z_n^T>
+        """
         N, self.d = X.shape
-        recon = np.sum(X**2, axis=0)                          # (d,) -- sum_i x_ij^2, per feature
-        cross = 2 * np.sum(X * (Ez @ W.T), axis=0)            # (d,) -- sum_i x_ij (w_j^T Ez_i)
-        quad = np.einsum('dk,nkl,dl->d', W, Ezz, W)           # (d,) -- sum_i w_j^T Ezz_i w_j
-        S = recon - cross + quad
-        self.psi = S / N                                      # (d,)
+
+        # aggregate statistics so each passes over n once
+        sum_Ezz = Ezz.sum(axis=0)   # (k,k) = sum_n <z_n, z_n^T> symmetric PSD
+        XtEz    = X.T @ Ez          # (d,k) row j = sum_n x_nj <>z_n>^T. one BLAS matmul O(Ndk)
+
+    
+        recon = np.sum(X**2, axis=0)            # (d,)
+        # cross_j = 2w_j^T (row j of XtEz)
+        # elementwise (d, k) * (d, k), then sum over k  ->  one dot product per row
+        cross = 2 * np.sum(W * XtEz, axis=1)    # (d,)
+        # quad  = w_j^T sum_Ezz w_j
+        # W @ sum_Ezz is (d, k), with row j = w_j^T sum_Ezz; then a row-wise dot with W.
+        # This equals diag(W sum_Ezz W^T) without forming the (d, d) matrix. O(dk^2)
+        quad = np.sum((W @ sum_Ezz) * W, axis=1) # (d,)
+
+        R = recon - cross + quad    # (d,) Expected squared residual per feature
+        self.psi = R / N            # (d,) FA: one noise variance per feature
 
     def noise_as_vec(self):
         return self.psi

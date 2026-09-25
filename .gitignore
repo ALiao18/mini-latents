@@ -2,3 +2,5 @@
 .python-version
 __pycache__/
 probset8.pdf
+benchmark/
+bench_results/
