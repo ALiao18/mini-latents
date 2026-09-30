@@ -98,12 +98,12 @@ class AnisotropicNoise(NoiseModel):
         """
         N, self.d = X.shape
 
-        recon_term = np.sum(X**2, axis=0)                     # scalar: sums n over (N, d)
-        cross_term = 2 * np.sum(W * (X.T @ Ez), axis = 1)     # scalar: sums k over (d, k)
-        quad_term  = np.sum((W @ sum_Ezz) * W, axis = 1)      # scalar: sums k over (d, k)
+        recon_term = np.sum(X**2, axis=0)                     # (d,): sums n over (N, d)
+        cross_term = 2 * np.sum(W * (X.T @ Ez), axis = 1)     # (d,): sums k over (d, k)
+        quad_term  = np.sum((W @ sum_Ezz) * W, axis = 1)      # (d,): sums k over (d, k)
 
-        R = recon_term - cross_term + quad_term     # scalar
-        self.psi = R / N                            # scalar 
+        R = recon_term - cross_term + quad_term     # (d,)
+        self.psi = R / N                            # (d,) 
 
     def noise_as_vec(self):
         return self.psi

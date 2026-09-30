@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-
+from .tracking import FitFlags
 import numpy as np
 
 
@@ -11,6 +11,7 @@ class LinearLatentModels(ABC):
         self.noise_cov_ = None
         self.explained_variance_ = None  # 1D array: eigenvalues of the top n_components
         self.noise_variance_ = None
+        self.flag = FitFlags()
         self.Z = None
 
     @abstractmethod

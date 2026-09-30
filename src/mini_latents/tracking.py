@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+
+@dataclass
 class FitFlags():
     """Status flag from model fit. 
 
@@ -7,7 +10,6 @@ class FitFlags():
         True if log likelihood converged before reaching max_iters
     decreasing_ll: bool, default False
         True if log likelihood decreased during training
-    
     """
 
     converged: bool = False

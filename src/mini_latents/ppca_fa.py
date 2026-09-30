@@ -5,9 +5,6 @@ from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
-_LL_NOISE = 1e-9
-
-
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
 
@@ -21,32 +18,32 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         X, 
         n_components=None, 
         max_iter=100, 
-        fit_tol=1e-6,
-        flags: FitFlags | None = None,
+        tol=1e-6,
         ):
         """
         Fit the model using the EM algorithm.
         1. center the data to mu = 0
         2. initialize W using self._init_W(Xc)
         
-        Stpping criterion:
-        according to fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than 
-        fit_tol * total gain since baseline. 
+        Stopping criterion:
+        fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than 
+        tol * total gain since baseline. 
 
         params:
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
         - tol         : per-sample log-likelihood gain. Stopping criteria for EM
         """
-        if n_components is None:
-            n_components = self.n_components
+        if n_components is None: n_components = self.n_components
+
         self.n_components = n_components
+        self.flags = FitFlags()
 
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
         # N, _ = Xc.shape
 
-        # xyz initialize W: covariance matrix
+        # initialize loading matrix with closed-form PCA solution. 
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
         self.ll_history_ = []
@@ -68,18 +65,16 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             if i == 1:
                 ll_base = ll_curr
                 ll_old = ll_base
-            elif ll_curr < ll_old:
-                if flags.decreasing_ll:
-                    flags.decreasing_ll = True
-                print("log-likelihood decreased. Bug!")
-            elif fit_tol > 0 and (ll_curr - ll_base) < (1 + fit_tol) * (ll_old - ll_base):
-                flags.converged = True
+            elif tol > 0 and ll_curr - ll_old < 0:
+                self.flag.decreasing_ll = True
+            elif tol > 0 and (ll_curr - ll_base) < (1 + tol) * (ll_old - ll_base):
+                self.flag.converged = True
                 break
             
             ll_old = ll_curr
 
         self.components_ = W
-        self.n_iter_ = i + 1
+        self.n_iter_ = len(self.ll_history_)
         self.log_likelihood_ = ll_curr
         return self
 

@@ -46,7 +46,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     M, _ = _sym_inv_logdet(M_inv)          # posterior cov  (k, k)
 
     Ez = X @ Psi_inv_W @ M                 # posterior mean (N, k)
-    sum_Ezz = N * M + (Ez.T @ Ez.T)        # (k, k) m_step_W uses sum
+    sum_Ezz = N * M + (Ez.T @ Ez)          # (k, k) m_step_W uses sum
 
     return Ez, sum_Ezz
 
