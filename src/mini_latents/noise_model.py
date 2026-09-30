@@ -47,7 +47,7 @@ class IsotropicNoise(NoiseModel):
 
     def m_step(self, X, W, Ez, sum_Ezz) -> None:
         """
-        Noise update for pPCA
+        Noise update for pPCA. O(Ndk + dk^2)
 
         params
         ------
@@ -57,9 +57,11 @@ class IsotropicNoise(NoiseModel):
         sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
         """
         N, d = X.shape
+
         recon_term = np.sum(X**2)                   # scalar: sums n over (N,d)
         cross_term = 2 * np.sum((X @ W) * Ez)       # scalar: sums n over (N,k)
         trace_term = np.trace(W.T @ W @ sum_Ezz)    # scalar: trace of (k, k)
+        
         S = recon_term - cross_term + trace_term    # scalar
         self.psi = S / (N * d)                      # scalar
 
@@ -76,39 +78,32 @@ class AnisotropicNoise(NoiseModel):
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0)
 
-    def m_step(self, X, W, Ez, sum_Ezz):
+    def m_step(self, X, W, Ez, sum_Ezz) -> None:
         """
-        FA noise update. O(dk)
+        Noise update for FA. O(Ndk + dk^2)
 
         psi_j = expected squared residual (R_j) of feature j, summed over samples
 
         R_j = recon - cross + quad
             recon = sum_n x_nj**2
             cross = 2 w_j^T (sum_n <z_n> x_nj)
-            trace  = w_j^T (sum_n < z_n z_n^T>) w_j
+            quad  = w_j^T (sum_n < z_n z_n^T>) w_j
 
         Params
         ------
-        X   (N,d): centered data
-        W   (d,k): loading matrix.
-        Ez  (N,k): posterior means <z_n>
-        Ezz (N,k,k): posterior second moments <z_n z_n^T>
+        X       (N, d): centered data
+        W       (d, k): loading matrix
+        Ez      (N, k): posterior mean
+        sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
         """
         N, self.d = X.shape
 
-        XtEz = X.T @ Ez  # (d,k) row j = sum_n x_nj <>z_n>^T. one BLAS matmul O(Ndk)
+        recon_term = np.sum(X**2, axis=0)                     # scalar: sums n over (N, d)
+        cross_term = 2 * np.sum(W * (X.T @ Ez), axis = 1)     # scalar: sums k over (d, k)
+        quad_term  = np.sum((W @ sum_Ezz) * W, axis = 1)      # scalar: sums k over (d, k)
 
-        recon = np.sum(X**2, axis=0)  # (d,)
-        # cross_j = 2w_j^T (row j of XtEz)
-        # elementwise (d, k) * (d, k), then sum over k  ->  one dot product per row
-        cross = 2 * np.sum(W * XtEz, axis=1)  # (d,)
-        # quad  = w_j^T sum_Ezz w_j
-        # W @ sum_Ezz is (d, k), with row j = w_j^T sum_Ezz; then a row-wise dot with W.
-        # This equals diag(W sum_Ezz W^T) without forming the (d, d) matrix. O(dk^2)
-        quad = np.sum((W @ sum_Ezz) * W, axis=1)  # (d,)
-
-        R = recon - cross + quad  # (d,) Expected squared residual per feature
-        self.psi = R / N  # (d,) FA: one noise variance per feature
+        R = recon_term - cross_term + quad_term     # scalar
+        self.psi = R / N                            # scalar 
 
     def noise_as_vec(self):
         return self.psi
