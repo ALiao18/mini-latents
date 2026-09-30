@@ -41,18 +41,27 @@ class IsotropicNoise(NoiseModel):
         self.d = None
         self.psi = None
 
-    def initialize(self, X):
+    def initialize(self, X) -> None:
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0).mean()
 
-    def m_step(self, X, W, Ez, Ezz):
+    def m_step(self, X, W, Ez, sum_Ezz) -> None:
+        """
+        Noise update for pPCA
+
+        params
+        ------
+        X       (N, d): centered data
+        W       (d, k): loading matrix
+        Ez      (N, k): posterior mean
+        sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
+        """
         N, d = X.shape
-        recon_term = np.sum(X**2)  # sum_i x_i^T x_i
-        cross_term = 2 * np.sum((X @ W) * Ez)  # sum_i x_i^T W Ez_i
-        WtW = W.T @ W
-        trace_term = np.sum(np.einsum("ij,nji->n", WtW, Ezz))  # sum_i tr(WtW @ Ezz_i)
-        S = recon_term - cross_term + trace_term
-        self.psi = S / (N * d)
+        recon_term = np.sum(X**2)                   # scalar: sums n over (N,d)
+        cross_term = 2 * np.sum((X @ W) * Ez)       # scalar: sums n over (N,k)
+        trace_term = np.trace(W.T @ W @ sum_Ezz)    # scalar: trace of (k, k)
+        S = recon_term - cross_term + trace_term    # scalar
+        self.psi = S / (N * d)                      # scalar
 
     def noise_as_vec(self):
         return np.full(self.d, self.psi)  # (d,)
@@ -64,11 +73,10 @@ class AnisotropicNoise(NoiseModel):
         self.psi = None
 
     def initialize(self, X):
-
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0)
 
-    def m_step(self, X, W, Ez, Ezz):
+    def m_step(self, X, W, Ez, sum_Ezz):
         """
         FA noise update. O(dk)
 
@@ -77,7 +85,7 @@ class AnisotropicNoise(NoiseModel):
         R_j = recon - cross + quad
             recon = sum_n x_nj**2
             cross = 2 w_j^T (sum_n <z_n> x_nj)
-            quad  = w_j^T (sum_n < z_n z_n^T>) w_j
+            trace  = w_j^T (sum_n < z_n z_n^T>) w_j
 
         Params
         ------
@@ -88,8 +96,6 @@ class AnisotropicNoise(NoiseModel):
         """
         N, self.d = X.shape
 
-        # aggregate statistics so each passes over n once
-        sum_Ezz = Ezz.sum(axis=0)  # (k,k) = sum_n <z_n, z_n^T> symmetric PSD
         XtEz = X.T @ Ez  # (d,k) row j = sum_n x_nj <>z_n>^T. one BLAS matmul O(Ndk)
 
         recon = np.sum(X**2, axis=0)  # (d,)

@@ -2,7 +2,7 @@ import numpy as np
 
 def _sym_inv_logdet(A: np.ndarray, eps: float = 1e-10):
     """
-    Invert a symmetric positive (semi-)definite matrix and compute its
+    Invert a Symmetric Positive Definite (SPD) matrix and compute its
     log-determinant via eigendecomposition
 
     Returns
@@ -32,7 +32,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     Ez       (N,k): posterior mean
     sum_Ezz  (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
     """
-    N, d = X.shape
+    N, _ = X.shape
 
     if psi.ndim != 1: 
         raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
@@ -46,9 +46,8 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     M, _ = _sym_inv_logdet(M_inv)          # posterior cov  (k, k)
 
     Ez = X @ Psi_inv_W @ M                 # posterior mean (N, k)
-    
-    # Ezz = M[None, :, :] + Ez[:,:, None] @ Ez[:, None, :]   # (N, k, k) = (1, k, k) + (N, k, 1) @ (N, 1, k)
     sum_Ezz = N * M + (Ez.T @ Ez.T)        # (k, k) m_step_W uses sum
+
     return Ez, sum_Ezz
 
 def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray) -> np.ndarray:
