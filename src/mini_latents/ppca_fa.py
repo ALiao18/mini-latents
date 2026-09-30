@@ -68,7 +68,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             if i == 1:
                 ll_base = ll_curr
                 ll_old = ll_base
-            elif ll_curr < self.ll_old:
+            elif ll_curr < ll_old:
                 if flags.decreasing_ll:
                     flags.decreasing_ll = True
                 print("log-likelihood decreased. Bug!")
