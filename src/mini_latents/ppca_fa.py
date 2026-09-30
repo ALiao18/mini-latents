@@ -3,6 +3,7 @@ import numpy as np
 from .base import LinearLatentModels
 from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
+from .tracking import FitFlags
 
 _LL_NOISE = 1e-9
 
@@ -15,11 +16,22 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Ez, _ = e_step(Xc, self.components_, self.noise_model.noise_as_vec())
         return Ez
 
-    def fit(self, X, n_components=None, max_iter=100, tol=1e-6):
+    def fit(
+        self, 
+        X, 
+        n_components=None, 
+        max_iter=100, 
+        fit_tol=1e-6,
+        flags: FitFlags | None = None,
+        ):
         """
         Fit the model using the EM algorithm.
         1. center the data to mu = 0
         2. initialize W using self._init_W(Xc)
+        
+        Stpping criterion:
+        according to fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than 
+        fit_tol * total gain since baseline. 
 
         params:
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
@@ -32,35 +44,43 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
-        N, _ = Xc.shape
+        # N, _ = Xc.shape
 
         # xyz initialize W: covariance matrix
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
         self.ll_history_ = []
 
-        prev_ll = -np.inf
-        i = -1  # so max_iter=0 leaves n_iter_ at 0
+        ll_curr = -np.inf  
+        ll_base = -np.inf
+        ll_old = -np.inf
+
         for i in range(max_iter):
             psi = self.noise_model.noise_as_vec()  # (d,)
             Ez, Ezz = e_step(Xc, W, psi)
             W = m_step_W(Xc, Ez, Ezz)
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
-            ll = log_likelihood(Xc, W, self.noise_model.noise_as_vec())
-            self.ll_history_.append(ll)
-            if ll < prev_ll - _LL_NOISE * abs(prev_ll):
-                print("Bug! log-likelihood decreased. EM guarantees monotonic increase")
-                prev_ll = ll
-            if (ll - prev_ll) / N < tol:
-                prev_ll = ll
-                break
+            ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec())
+            self.ll_history_.append(ll_curr)
 
-            prev_ll = ll
+            # stopping criterion
+            if i == 1:
+                ll_base = ll_curr
+                ll_old = ll_base
+            elif ll_curr < self.ll_old:
+                if flags.decreasing_ll:
+                    flags.decreasing_ll = True
+                print("log-likelihood decreased. Bug!")
+            elif fit_tol > 0 and (ll_curr - ll_base) < (1 + fit_tol) * (ll_old - ll_base):
+                flags.converged = True
+                break
+            
+            ll_old = ll_curr
 
         self.components_ = W
         self.n_iter_ = i + 1
-        self.log_likelihood_ = prev_ll
+        self.log_likelihood_ = ll_curr
         return self
 
     def _init_W(self, Xc, n_components):
