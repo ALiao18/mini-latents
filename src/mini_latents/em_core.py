@@ -21,7 +21,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     """
     Compute posterior over latent variables z | x for each sample.
 
-    Param
+    Params
     ------
     X   (N,d): centered data matrix 
     W   (d,k): current loading matrix 
@@ -29,38 +29,48 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
 
     Returns
     -------
-    Ez:  posterior mean, (N, k)
-    Ezz: posterior second moment E[z z^T], (N, k, k)
+    Ez       (N,k): posterior mean
+    sum_Ezz  (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
     """
+    N, d = X.shape
+
     if psi.ndim != 1: 
         raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
     
     k = W.shape[1]
 
-    psi_inv   = 1/psi                            # (d,)
-    Psi_inv_W = psi_inv[:, None] * W             # (d,k), O(dk)
+    psi_inv   = 1/psi                      # (d,)
+    Psi_inv_W = psi_inv[:, None] * W       # (d,k), O(dk)
 
-    # M = 
-    M_inv = np.eye(k) + W.T @ Psi_inv_W                    # (k, k), symmetric PD
-    M, _ = _sym_inv_logdet(M_inv)                          # posterior cov  (k, k)
+    M_inv = np.eye(k) + W.T @ Psi_inv_W    # (k, k), symmetric PD
+    M, _ = _sym_inv_logdet(M_inv)          # posterior cov  (k, k)
 
-    Ez = X @ Psi_inv_W @ M                                 # posterior mean (N, k)
+    Ez = X @ Psi_inv_W @ M                 # posterior mean (N, k)
     
-    # broadcast M to [1, k, k], batched matmul on 3D arrays 
-    Ezz = M[None, :, :] + Ez[:,:, None] @ Ez[:, None, :]   # (N, k, k) = (1, k, k) + (N, k, 1) @ (N, 1, k)
+    # Ezz = M[None, :, :] + Ez[:,:, None] @ Ez[:, None, :]   # (N, k, k) = (1, k, k) + (N, k, 1) @ (N, 1, k)
+    sum_Ezz = N * M + (Ez.T @ Ez.T)        # (k, k) m_step_W uses sum
+    return Ez, sum_Ezz
 
-    return Ez, Ezz
-
-def m_step_W(X: np.ndarray, Ez: np.ndarray, Ezz: np.ndarray) -> np.ndarray:
+def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray) -> np.ndarray:
     """
-    Closed-form M-step update for W. Identical for pPCA and FA.
+    Closed-form M-step update for W.
     W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1
-    """
-    sum_xEz = X.T @ Ez                                  # (d, k)
-    sum_Ezz = Ezz.sum(axis=0)                           # (k, k), symmetric PD
 
-    sum_Ezz_inv, _ = _sym_inv_logdet(sum_Ezz)
-    W_new = sum_xEz @ sum_Ezz_inv
+    Params
+    ------
+    X       (N,d): centered data matrix
+    Ez      (N,k): posterior mean
+    sum_Ezz (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
+
+    Returns
+    ------
+    W_new   (d,k): updated loading matrix
+    """
+    sum_xEz = X.T @ Ez                              # (d,k)
+
+    sum_Ezz_inv, _ = _sym_inv_logdet(sum_Ezz)       # (k,k)
+    W_new = sum_xEz @ sum_Ezz_inv                   # (d,k)
+
     return W_new
 
 def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
