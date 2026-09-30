@@ -1,14 +1,15 @@
 """Tests for the two noise models plugged into the shared EM loop."""
+
 import numpy as np
 import pytest
 
 from mini_latents.em_core import e_step
-from mini_latents.noise_model import IsotropicNoise, AnisotropicNoise
+from mini_latents.noise_model import AnisotropicNoise, IsotropicNoise
 
 
 @pytest.fixture
 def em_state():
-    '''Centered data plus one E-step's worth of posterior moments.'''
+    """Centered data plus one E-step's worth of posterior moments."""
     rng = np.random.default_rng(20)
     N, d, k = 200, 5, 2
     X = rng.normal(size=(N, d)) @ rng.normal(size=(d, d))
@@ -20,6 +21,7 @@ def em_state():
 
 
 # --- initialize / as_matrix ------------------------------------------------
+
 
 def test_isotropic_initialize_uses_mean_feature_variance():
     rng = np.random.default_rng(21)
@@ -68,12 +70,13 @@ def test_anisotropic_as_matrix_is_diagonal():
 
 # --- m_step ----------------------------------------------------------------
 
+
 def test_isotropic_m_step_is_the_mean_of_the_anisotropic_m_step(em_state):
-    '''
+    """
     Both M-steps average the same expected residual -- the isotropic one just
     pools across features. This cross-checks the two independent einsums
     (trace_term vs quad) against each other.
-    '''
+    """
     X, W, Ez, Ezz = em_state
 
     iso = IsotropicNoise()
@@ -88,7 +91,7 @@ def test_isotropic_m_step_is_the_mean_of_the_anisotropic_m_step(em_state):
 
 
 def test_anisotropic_m_step_matches_naive_loop(em_state):
-    '''Reference implementation of sum_i (x_i - W z_i)(x_i - W z_i)^T, per feature.'''
+    """Reference implementation of sum_i (x_i - W z_i)(x_i - W z_i)^T, per feature."""
     X, W, Ez, Ezz = em_state
     N, d = X.shape
 
@@ -123,9 +126,9 @@ def test_isotropic_m_step_matches_naive_loop(em_state):
     np.testing.assert_allclose(iso.psi, total / (N * d), rtol=1e-9)
 
 
-@pytest.mark.parametrize('cls', [IsotropicNoise, AnisotropicNoise])
+@pytest.mark.parametrize("cls", [IsotropicNoise, AnisotropicNoise])
 def test_m_step_keeps_variances_positive(cls, em_state):
-    '''The residual is a sum of squares, so psi can never go negative.'''
+    """The residual is a sum of squares, so psi can never go negative."""
     X, W, Ez, Ezz = em_state
 
     noise = cls()

@@ -3,14 +3,14 @@
 FA has no closed form, so it is checked against sklearn's independent
 implementation plus the invariances the model is defined by.
 """
+
 import numpy as np
+from helpers import em_ll_trace, subspace_dist
 from sklearn.decomposition import FactorAnalysis as SklearnFA
 
 from mini_latents.em_core import log_likelihood
 from mini_latents.noise_model import AnisotropicNoise
 from mini_latents.ppca_fa import FA, pPCA
-
-from helpers import em_ll_trace, subspace_dist
 
 # These tests compare a fit against a closed form, against sklearn, or against
 # another fit, so EM has to actually reach the optimum rather than stop near it.
@@ -18,7 +18,7 @@ from helpers import em_ll_trace, subspace_dist
 # that gain is float64 rounding noise, which makes the stopping iteration vary
 # between machines. A negative tol disables the early break, so every fit here
 # runs the same fixed number of iterations everywhere.
-CONVERGED = dict(max_iter=600, tol=-np.inf)
+CONVERGED = {"max_iter": 600, "tol": -np.inf}
 
 
 def _implied_cov(model):
@@ -27,12 +27,13 @@ def _implied_cov(model):
 
 # --- against sklearn -------------------------------------------------------
 
+
 def test_implied_covariance_matches_sklearn(aniso_data):
-    '''
+    """
     sklearn's loadings are an arbitrary rotation of ours, but W W^T + Psi is
     rotation-invariant and so directly comparable.
-    '''
-    X, k = aniso_data['X'], aniso_data['k']
+    """
+    X, k = aniso_data["X"], aniso_data["k"]
 
     ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
@@ -42,17 +43,19 @@ def test_implied_covariance_matches_sklearn(aniso_data):
 
 
 def test_log_likelihood_matches_sklearn(aniso_data):
-    X, k = aniso_data['X'], aniso_data['k']
+    X, k = aniso_data["X"], aniso_data["k"]
 
     ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
 
-    ll = log_likelihood(X - ours.mean_, ours.components_, ours.noise_model.noise_as_vec())
+    ll = log_likelihood(
+        X - ours.mean_, ours.components_, ours.noise_model.noise_as_vec()
+    )
     np.testing.assert_allclose(ll, theirs.score(X) * len(X), rtol=1e-8)
 
 
 def test_uniquenesses_match_sklearn(aniso_data):
-    X, k = aniso_data['X'], aniso_data['k']
+    X, k = aniso_data["X"], aniso_data["k"]
 
     ours = FA(k).fit(X, k, **CONVERGED)
     theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
@@ -62,8 +65,9 @@ def test_uniquenesses_match_sklearn(aniso_data):
 
 # --- EM behaviour ----------------------------------------------------------
 
+
 def test_em_log_likelihood_is_monotone(aniso_data):
-    X, k = aniso_data['X'], aniso_data['k']
+    X, k = aniso_data["X"], aniso_data["k"]
     Xc = X - X.mean(axis=0)
 
     model = FA(k)
@@ -73,11 +77,11 @@ def test_em_log_likelihood_is_monotone(aniso_data):
 
 
 def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
-    '''
+    """
     pPCA is FA with Psi constrained to be isotropic, so FA's optimum can never
     be worse on the same data.
-    '''
-    X, k = aniso_data['X'], aniso_data['k']
+    """
+    X, k = aniso_data["X"], aniso_data["k"]
     Xc = X - X.mean(axis=0)
 
     fa = FA(k).fit(X, k, **CONVERGED)
@@ -90,8 +94,9 @@ def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
 
 # --- recovery --------------------------------------------------------------
 
+
 def test_recovers_the_generating_subspace(aniso_data):
-    X, k, W_true = aniso_data['X'], aniso_data['k'], aniso_data['W_true']
+    X, k, W_true = aniso_data["X"], aniso_data["k"], aniso_data["W_true"]
 
     model = FA(k).fit(X, k, **CONVERGED)
 
@@ -101,8 +106,8 @@ def test_recovers_the_generating_subspace(aniso_data):
 
 
 def test_recovers_heteroscedastic_noise(aniso_data):
-    '''The whole point of FA: per-feature noise variances, not one shared value.'''
-    X, k, psi_true = aniso_data['X'], aniso_data['k'], aniso_data['psi_true']
+    """The whole point of FA: per-feature noise variances, not one shared value."""
+    X, k, psi_true = aniso_data["X"], aniso_data["k"], aniso_data["psi_true"]
 
     model = FA(k).fit(X, k, **CONVERGED)
 
@@ -111,42 +116,49 @@ def test_recovers_heteroscedastic_noise(aniso_data):
 
 # --- the invariance that defines FA ----------------------------------------
 
+
 def test_is_equivariant_under_per_feature_rescaling(aniso_data):
-    '''
+    """
     Rescaling feature j by c_j must rescale the fitted covariance to
     diag(c) C diag(c). FA is scale-equivariant per feature; pPCA is not, which
     is exactly what separates the two models.
-    '''
-    X, k = aniso_data['X'], aniso_data['k']
+    """
+    X, k = aniso_data["X"], aniso_data["k"]
     c = np.array([0.5, 2.0, 1.0, 3.0, 0.25, 1.5, 4.0, 0.75])
 
     base = FA(k).fit(X, **CONVERGED)
     scaled = FA(k).fit(X * c, **CONVERGED)
 
     expected = c[:, None] * _implied_cov(base) * c[None, :]
-    assert np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected) < 1e-9
+    assert (
+        np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected)
+        < 1e-9
+    )
 
 
 def test_ppca_is_not_scale_equivariant(aniso_data):
-    '''The contrast case: an isotropic Psi cannot absorb per-feature rescaling.'''
-    X, k = aniso_data['X'], aniso_data['k']
+    """The contrast case: an isotropic Psi cannot absorb per-feature rescaling."""
+    X, k = aniso_data["X"], aniso_data["k"]
     c = np.array([0.5, 2.0, 1.0, 3.0, 0.25, 1.5, 4.0, 0.75])
 
     base = pPCA(k).fit(X, **CONVERGED)
     scaled = pPCA(k).fit(X * c, **CONVERGED)
 
     expected = c[:, None] * _implied_cov(base) * c[None, :]
-    assert np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected) > 1e-2
+    assert (
+        np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected)
+        > 1e-2
+    )
 
 
 def test_reduces_to_ppca_when_noise_is_isotropic(iso_data, aniso_data):
-    '''
+    """
     Given genuinely isotropic noise, FA should land on pPCA's subspace and on a
     far flatter Psi than it finds on genuinely heteroscedastic data. The
     dispersion is compared against the anisotropic fit rather than a bare
     constant, so the test calibrates itself instead of encoding a magic number.
-    '''
-    X, k = iso_data['X'], iso_data['k']
+    """
+    X, k = iso_data["X"], iso_data["k"]
 
     fa = FA(k).fit(X, k, **CONVERGED)
     pp = pPCA(k).fit(X, k, **CONVERGED)
@@ -156,5 +168,5 @@ def test_reduces_to_ppca_when_noise_is_isotropic(iso_data, aniso_data):
     def dispersion(psi):
         return psi.std() / psi.mean()
 
-    fa_aniso = FA(k).fit(aniso_data['X'], k, **CONVERGED)
+    fa_aniso = FA(k).fit(aniso_data["X"], k, **CONVERGED)
     assert dispersion(fa.noise_model.psi) < 0.5 * dispersion(fa_aniso.noise_model.psi)

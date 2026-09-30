@@ -21,7 +21,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     """
     Compute posterior over latent variables z | x for each sample.
 
-    Params
+    Param
     ------
     X   (N,d): centered data matrix 
     W   (d,k): current loading matrix 
@@ -51,7 +51,6 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
 def m_step_W(X: np.ndarray, Ez: np.ndarray, Ezz: np.ndarray) -> np.ndarray:
     """
     Closed-form M-step update for W. Identical for pPCA and FA.
-
     W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1
     """
     sum_xEz = X.T @ Ez                                  # (d, k)

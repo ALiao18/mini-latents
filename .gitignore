@@ -4,3 +4,6 @@ __pycache__/
 probset8.pdf
 benchmark/
 bench_results/
+test/
+generative_story.py
+figs_story

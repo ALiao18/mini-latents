@@ -1,7 +1,8 @@
-from .base import LinearLatentModels
-from .noise_model import NoiseModel, IsotropicNoise, AnisotropicNoise
-from .em_core import e_step, m_step_W, log_likelihood
 import numpy as np
+
+from .base import LinearLatentModels
+from .em_core import e_step, log_likelihood, m_step_W
+from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 
 _LL_NOISE = 1e-9
 
@@ -15,7 +16,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         return Ez
 
     def fit(self, X, n_components=None, max_iter=100, tol=1e-6):
-        '''
+        """
         Fit the model using the EM algorithm.
         1. center the data to mu = 0
         2. initialize W using self._init_W(Xc)
@@ -23,25 +24,25 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         params:
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
         - tol         : per-sample log-likelihood gain. Stopping criteria for EM
-        '''
+        """
         if n_components is None:
             n_components = self.n_components
         self.n_components = n_components
 
         # zero mean the data
-        self.mean_ = X.mean(axis=0) # (d,)
-        Xc = X - self.mean_         # (N, d) broadcast over rows
+        self.mean_ = X.mean(axis=0)  # (d,)
+        Xc = X - self.mean_  # (N, d) broadcast over rows
         N, _ = Xc.shape
 
-        # xyz initialize W: covariance matrix 
+        # xyz initialize W: covariance matrix
         W = self._init_W(Xc, n_components)
         self.noise_model.initialize(Xc)
         self.ll_history_ = []
 
         prev_ll = -np.inf
-        i = -1                                  # so max_iter=0 leaves n_iter_ at 0
+        i = -1  # so max_iter=0 leaves n_iter_ at 0
         for i in range(max_iter):
-            psi = self.noise_model.noise_as_vec() # (d,)
+            psi = self.noise_model.noise_as_vec()  # (d,)
             Ez, Ezz = e_step(Xc, W, psi)
             W = m_step_W(Xc, Ez, Ezz)
             self.noise_model.m_step(Xc, W, Ez, Ezz)
@@ -54,7 +55,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             if (ll - prev_ll) / N < tol:
                 prev_ll = ll
                 break
-                
+
             prev_ll = ll
 
         self.components_ = W
@@ -63,8 +64,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         return self
 
     def _init_W(self, Xc, n_components):
-        '''
-        initializes Weight matrix using PCA initialization 
+        """
+        initializes Weight matrix using PCA initialization
         (closed-form max. likelihood solution for pPCA) (Tipping & Bishop, 1999)
 
         W = U_k*(Λ_k - sigma^2*I)**(1/2)*R
@@ -80,21 +81,24 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         returns:
         - W (d,k): weight matrix initialization
-        '''
+        """
         N, d = Xc.shape
 
-        S = Xc.T @ Xc / N                                   # (d, d), symmetric sample covariance
-        eigvals, eigvecs = np.linalg.eigh(S)                # ascending 
-        eigvals, eigvecs = eigvals[::-1], eigvecs[:, ::-1]  # descending: eigvals (d,), eigvecs (d,d)
+        S = Xc.T @ Xc / N  # (d, d), symmetric sample covariance
+        eigvals, eigvecs = np.linalg.eigh(S)  # ascending
+        eigvals, eigvecs = (
+            eigvals[::-1],
+            eigvecs[:, ::-1],
+        )  # descending: eigvals (d,), eigvecs (d,d)
 
         # max likelihood noise variance = mean(discarded eigenvalues)
-        sigma2 = eigvals[n_components:].mean() if n_components < d else 0.0 # scalar
+        sigma2 = eigvals[n_components:].mean() if n_components < d else 0.0  # scalar
 
-        # Λ_k - sigma^2*I 
-        scale = np.clip(eigvals[:n_components] - sigma2, 1e-12, None) # (n_components,)
+        # Λ_k - sigma^2*I
+        scale = np.clip(eigvals[:n_components] - sigma2, 1e-12, None)  # (n_components,)
 
-        W = eigvecs[:,:n_components] * np.sqrt(scale)                 # (d, k)
-        return W 
+        W = eigvecs[:, :n_components] * np.sqrt(scale)  # (d, k)
+        return W
 
 
 class pPCA(ProbabilisticLinearLatentModels):
