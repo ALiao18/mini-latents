@@ -5,6 +5,8 @@ from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
+_LL_DECREASE_RTOL = 1e-10
+
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
 
@@ -65,7 +67,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             if i == 1:
                 ll_base = ll_curr
                 ll_old = ll_base
-            elif tol > 0 and ll_curr - ll_old < 0:
+            elif ll_curr - ll_old - _LL_DECREASE_RTOL * abs(ll_old):
                 self.flag.decreasing_ll = True
             elif tol > 0 and (ll_curr - ll_base) < (1 + tol) * (ll_old - ll_base):
                 self.flag.converged = True
