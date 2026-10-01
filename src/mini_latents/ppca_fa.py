@@ -67,10 +67,10 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             if i == 1:
                 ll_base = ll_curr
                 ll_old = ll_base
-            elif ll_curr - ll_old - _LL_DECREASE_RTOL * abs(ll_old):
-                self.flag.decreasing_ll = True
+            elif ll_curr < ll_old - _LL_DECREASE_RTOL * abs(ll_old):
+                self.flags.decreasing_ll = True
             elif tol > 0 and (ll_curr - ll_base) < (1 + tol) * (ll_old - ll_base):
-                self.flag.converged = True
+                self.flags.converged = True
                 break
             
             ll_old = ll_curr

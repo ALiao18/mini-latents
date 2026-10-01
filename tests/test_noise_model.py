@@ -30,7 +30,7 @@ def test_isotropic_initialize_uses_mean_feature_variance():
     noise = IsotropicNoise()
     noise.initialize(X)
 
-    assert noise.d == 4
+    assert noise.x_dim == 4
     np.testing.assert_allclose(noise.psi, np.var(X, axis=0).mean())
 
 
@@ -41,7 +41,7 @@ def test_anisotropic_initialize_uses_per_feature_variance():
     noise = AnisotropicNoise()
     noise.initialize(X)
 
-    assert noise.d == 4
+    assert noise.x_dim == 4
     np.testing.assert_allclose(noise.psi, np.var(X, axis=0))
 
 
@@ -99,11 +99,16 @@ def test_anisotropic_m_step_matches_naive_loop(em_state):
     aniso.initialize(X)
     aniso.m_step(X, W, Ez, Ezz)
 
+    # e_step returns only the sum over samples; rebuild the shared posterior
+    # covariance M from it so each E[z_i z_i^T] = M + Ez_i Ez_i^T is explicit.
+    M = (Ezz - Ez.T @ Ez) / N
+
     expected = np.zeros(d)
     for i in range(N):
+        Ezz_i = M + np.outer(Ez[i], Ez[i])
         expected += X[i] ** 2
         expected -= 2 * X[i] * (W @ Ez[i])
-        expected += np.diag(W @ Ezz[i] @ W.T)
+        expected += np.diag(W @ Ezz_i @ W.T)
     expected /= N
 
     np.testing.assert_allclose(aniso.psi, expected, rtol=1e-9, atol=1e-11)
@@ -117,11 +122,14 @@ def test_isotropic_m_step_matches_naive_loop(em_state):
     iso.initialize(X)
     iso.m_step(X, W, Ez, Ezz)
 
+    M = (Ezz - Ez.T @ Ez) / N  # shared posterior covariance, see anisotropic test
+
     total = 0.0
     for i in range(N):
+        Ezz_i = M + np.outer(Ez[i], Ez[i])
         total += X[i] @ X[i]
         total -= 2 * X[i] @ (W @ Ez[i])
-        total += np.trace(W.T @ W @ Ezz[i])
+        total += np.trace(W.T @ W @ Ezz_i)
 
     np.testing.assert_allclose(iso.psi, total / (N * d), rtol=1e-9)
 

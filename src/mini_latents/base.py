@@ -6,10 +6,10 @@ import numpy as np
 class LinearLatentModels(ABC):
     def __init__(self, n_components: int):
         self.n_components = n_components
-        self.components_ = None  # 2D array: eigenvectors of the top n_components
+        self.components_ = None          # (n, d) eigenvectors of the top n components
         self.mean_ = None
         self.noise_cov_ = None
-        self.explained_variance_ = None  # 1D array: eigenvalues of the top n_components
+        self.explained_variance_ = None  # (n,) eigenvalues of the top n_components
         self.noise_variance_ = None
         self.flags = FitFlags()
         self.Z = None

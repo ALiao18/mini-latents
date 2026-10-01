@@ -65,7 +65,7 @@ def test_e_step_shapes(wpsi):
     Ez, Ezz = e_step(X, W, psi)
 
     assert Ez.shape == (N, k)
-    assert Ezz.shape == (N, k, k)
+    assert Ezz.shape == (k, k)  # summed over samples
 
 
 def test_e_step_matches_textbook_form(wpsi):
@@ -98,15 +98,15 @@ def test_e_step_matches_woodbury_form(wpsi):
 
 
 def test_e_step_second_moment_decomposition(wpsi):
-    """E[z z^T] = Cov(z|x) + E[z] E[z]^T, with the covariance shared by all samples."""
+    """sum_n E[z z^T] = N Cov(z|x) + sum_n E[z_n] E[z_n]^T, with the covariance shared by all samples."""
     X, W, psi = wpsi
-    k = W.shape[1]
+    N, k = X.shape[0], W.shape[1]
 
     Ez, Ezz = e_step(X, W, psi)
 
     Psi_inv = np.diag(1 / psi)
     M = np.linalg.inv(np.eye(k) + W.T @ Psi_inv @ W)
-    expected = M[None, :, :] + np.einsum("nk,nl->nkl", Ez, Ez)
+    expected = (M[None, :, :] + np.einsum("nk,nl->nkl", Ez, Ez)).sum(axis=0)
     np.testing.assert_allclose(Ezz, expected, rtol=1e-9, atol=1e-11)
 
 
@@ -115,9 +115,8 @@ def test_e_step_second_moments_are_symmetric_psd(wpsi):
 
     _, Ezz = e_step(X, W, Psi)
 
-    for S in Ezz:
-        np.testing.assert_allclose(S, S.T, rtol=1e-10, atol=1e-12)
-        assert np.linalg.eigvalsh(S).min() > -1e-10
+    np.testing.assert_allclose(Ezz, Ezz.T, rtol=1e-10, atol=1e-12)
+    assert np.linalg.eigvalsh(Ezz).min() > -1e-10
 
 
 def test_e_step_shrinks_toward_prior():
@@ -138,13 +137,13 @@ def test_e_step_shrinks_toward_prior():
 
 
 def test_m_step_W_solves_normal_equations(wpsi):
-    """W_new (sum_i Ezz_i) = sum_i x_i Ez_i^T is the equation the M-step claims to solve."""
+    """W_new sum_Ezz = sum_i x_i Ez_i^T is the equation the M-step claims to solve."""
     X, W, Psi = wpsi
     Ez, Ezz = e_step(X, W, Psi)
 
     W_new = m_step_W(X, Ez, Ezz)
 
-    np.testing.assert_allclose(W_new @ Ezz.sum(axis=0), X.T @ Ez, rtol=1e-7, atol=1e-9)
+    np.testing.assert_allclose(W_new @ Ezz, X.T @ Ez, rtol=1e-7, atol=1e-9)
 
 
 def test_m_step_W_shape(wpsi):
@@ -162,7 +161,7 @@ def test_m_step_W_recovers_exact_loading_in_noiseless_limit():
     X = Z @ W_true.T
 
     Ez = Z
-    Ezz = np.einsum("nk,nl->nkl", Z, Z)
+    Ezz = Z.T @ Z  # sum_n z_n z_n^T
 
     np.testing.assert_allclose(m_step_W(X, Ez, Ezz), W_true, rtol=1e-8, atol=1e-10)
 
