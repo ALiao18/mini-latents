@@ -92,7 +92,7 @@ def test_em_log_likelihood_is_monotone(iso_data):
     Xc = X - X.mean(axis=0)
 
     model = pPCA(k)
-    lls = em_ll_trace(IsotropicNoise(), Xc, model._init_W(Xc, k), n_iter=100)
+    lls = em_ll_trace(IsotropicNoise(), Xc, model._init_W(Xc, k)[0], n_iter=100)
 
     assert np.all(np.diff(lls) >= -1e-8)
 
@@ -102,7 +102,7 @@ def test_em_improves_on_its_initialization(iso_data):
     Xc = X - X.mean(axis=0)
 
     model = pPCA(k)
-    W0 = model._init_W(Xc, k)
+    W0, _ = model._init_W(Xc, k)
     noise = IsotropicNoise()
     noise.initialize(Xc)
     psi = noise.noise_as_vec()
@@ -128,7 +128,7 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
 def test_n_iter_respects_max_iter(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
-    model = pPCA(k).fit(X, k, max_iter=7, tol=1e-15)
+    model = pPCA(k).fit(X, k, max_iter=7, tol=0)
 
     assert model.n_iter_ == 7
 

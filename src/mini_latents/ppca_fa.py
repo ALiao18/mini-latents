@@ -6,6 +6,7 @@ from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
 _LL_DECREASE_RTOL = 1e-10
+_LL_CONVERGE_RTOL = 1e-14
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
@@ -46,8 +47,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         # N, _ = Xc.shape
 
         # initialize loading matrix with closed-form PCA solution. 
-        W = self._init_W(Xc, n_components)
-        self.noise_model.initialize(Xc)
+        W, sigma2 = self._init_W(Xc, n_components)
+        self._init_noise(Xc, sigma2)
         self.ll_history_ = []
 
         ll_curr = -np.inf  
@@ -69,7 +70,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
                 ll_old = ll_base
             elif ll_curr < ll_old - _LL_DECREASE_RTOL * abs(ll_old):
                 self.flags.decreasing_ll = True
-            elif tol > 0 and (ll_curr - ll_base) < (1 + tol) * (ll_old - ll_base):
+            elif tol > 0 and ll_curr - ll_old <= tol * (ll_old - ll_base) + _LL_CONVERGE_RTOL * abs(ll_old):
                 self.flags.converged = True
                 break
             
@@ -115,8 +116,19 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         scale = np.clip(eigvals[:n_components] - sigma2, 1e-12, None)  # (n_components,)
 
         W = eigvecs[:, :n_components] * np.sqrt(scale)  # (d, k)
-        return W
+        return W, sigma2
 
+    def _init_noise(self, Xc, sigma2):
+        """
+        Start variance at maximum likelihood value, consistent with W from _init_W
+
+        Used by pPCA, where (W, sigma2) is the exact ML solution. FA overrides this.
+        """
+        if sigma2 <= 0:
+            raise ValueError("need n_components < x_dim: sigma^2_ML is the mean "
+                             "of the discarded eigenvalues, and there are none")
+        
+        self.noise_model.initialize(Xc, psi=sigma2)
 
 class pPCA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
@@ -143,16 +155,18 @@ class pPCA(ProbabilisticLinearLatentModels):
 
         return self
 
-    def _init_noise(self, Xc, sigma2):
-        """Start variance at maximum likelihood value, consistent with W from _init_W"""
-        if sigma2 <= 0:
-            raise ValueError("pPCA needs n_components < x_dim: sigma^2_ML is the mean "
-                             "of the discarded eigenvalues, and there are none")
-        
-        self.noise_model.initialize(Xc, psi=sigma2)
 
 
 class FA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
         super().__init__(n_components)
         self.noise_model = AnisotropicNoise()
+
+    def _init_noise(self, Xc, sigma2):
+        """
+        FA: per-feature variance diag(S).
+
+        An isotropic sigma2_ML start is slow when feature scales differ: on the test data
+        with features rescaled by 0.25..4 it needed ~1400 iterations vs ~20 from diag(S).
+        """
+        self.noise_model.initialize(Xc)

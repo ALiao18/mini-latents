@@ -4,7 +4,13 @@ import numpy as np
 import pytest
 from scipy.stats import multivariate_normal
 
-from mini_latents.em_core import _sym_inv_logdet, e_step, log_likelihood, m_step_W
+from mini_latents.em_core import (
+    cholesky_solve,
+    e_step,
+    log_likelihood,
+    logdet_from_cholesky,
+    m_step_W,
+)
 
 
 @pytest.fixture
@@ -19,40 +25,34 @@ def wpsi():
     return X, W, psi
 
 
-# --- _sym_inv_logdet -------------------------------------------------------
+# --- cholesky helpers ------------------------------------------------------
 
 
-def test_sym_inv_logdet_matches_numpy(spd_matrix):
-    A_inv, logdet = _sym_inv_logdet(spd_matrix)
+def test_cholesky_solve_matches_numpy(spd_matrix):
+    B = np.random.default_rng(15).normal(size=(len(spd_matrix), 3))
+    L = np.linalg.cholesky(spd_matrix)
 
-    np.testing.assert_allclose(A_inv, np.linalg.inv(spd_matrix), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        cholesky_solve(B, L), np.linalg.solve(spd_matrix, B), rtol=1e-10, atol=1e-12
+    )
+
+
+def test_logdet_from_cholesky_matches_slogdet(spd_matrix):
+    L = np.linalg.cholesky(spd_matrix)
+
     sign, expected = np.linalg.slogdet(spd_matrix)
     assert sign == 1
-    np.testing.assert_allclose(logdet, expected, rtol=1e-10)
+    np.testing.assert_allclose(logdet_from_cholesky(L), expected, rtol=1e-10)
 
 
-def test_sym_inv_logdet_returns_symmetric(spd_matrix):
-    A_inv, _ = _sym_inv_logdet(spd_matrix)
-    np.testing.assert_allclose(A_inv, A_inv.T, rtol=1e-12, atol=1e-14)
-
-
-def test_sym_inv_logdet_is_a_true_inverse(spd_matrix):
-    A_inv, _ = _sym_inv_logdet(spd_matrix)
-    np.testing.assert_allclose(A_inv @ spd_matrix, np.eye(len(spd_matrix)), atol=1e-10)
-
-
-def test_sym_inv_logdet_clips_singular_matrix():
-    """A rank-deficient input must not blow up: eigenvalues are clipped at eps."""
+def test_log_likelihood_raises_on_singular_covariance():
+    """No eps clip: a rank-deficient C = W W^T + Psi raises instead of being patched."""
     rng = np.random.default_rng(11)
-    B = rng.normal(size=(5, 2))
-    A = B @ B.T  # rank 2, so 3 zero eigenvalues
+    X = rng.normal(size=(20, 5))
+    W = rng.normal(size=(5, 2))  # W W^T has rank 2, and Psi = 0
 
-    A_inv, logdet = _sym_inv_logdet(A, eps=1e-10)
-
-    assert np.all(np.isfinite(A_inv))
-    assert np.isfinite(logdet)
-    # the clipped directions contribute 1/eps, not inf
-    assert np.max(np.abs(A_inv)) <= 1 / 1e-10
+    with pytest.raises(np.linalg.LinAlgError):
+        log_likelihood(X, W, np.zeros(5))
 
 
 # --- e_step ----------------------------------------------------------------

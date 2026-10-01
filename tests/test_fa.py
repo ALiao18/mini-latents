@@ -71,7 +71,7 @@ def test_em_log_likelihood_is_monotone(aniso_data):
     Xc = X - X.mean(axis=0)
 
     model = FA(k)
-    lls = em_ll_trace(AnisotropicNoise(), Xc, model._init_W(Xc, k), n_iter=150)
+    lls = em_ll_trace(AnisotropicNoise(), Xc, model._init_W(Xc, k)[0], n_iter=150)
 
     assert np.all(np.diff(lls) >= -1e-8)
 

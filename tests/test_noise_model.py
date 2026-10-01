@@ -30,7 +30,7 @@ def test_isotropic_initialize_uses_mean_feature_variance():
     noise = IsotropicNoise()
     noise.initialize(X)
 
-    assert noise.x_dim == 4
+    assert noise.d == 4
     np.testing.assert_allclose(noise.psi, np.var(X, axis=0).mean())
 
 
@@ -41,7 +41,7 @@ def test_anisotropic_initialize_uses_per_feature_variance():
     noise = AnisotropicNoise()
     noise.initialize(X)
 
-    assert noise.x_dim == 4
+    assert noise.d == 4
     np.testing.assert_allclose(noise.psi, np.var(X, axis=0))
 
 

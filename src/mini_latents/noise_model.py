@@ -79,7 +79,7 @@ class AnisotropicNoise(NoiseModel):
 
     def initialize(self, X, psi=None):
         self.d = X.shape[1]
-        self.psi = np.var(X, axis=0) if psi is None else np.asarray(psi)   # (d,)
+        self.psi = np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)   # scalar or (d,) -> (d,)
 
     def m_step(self, X, W, Ez, sum_Ezz) -> None:
         """
