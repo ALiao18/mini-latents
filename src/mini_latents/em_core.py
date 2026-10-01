@@ -72,6 +72,11 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     Used for EM convergence monitoring (should increase monotonically
     each iteration).
 
+    NOTE
+    Update to 
+    1. # matrix determinant lemma: log|C| = log|Psi| + log|M_inv|
+    2. # Woodbury: sum_n x_n^T C^-1 x_n = sum_n x_n^T Psi^-1 x_n - trace(M B^T B)
+
     Params
     ------
     X   (N,d): centered data matrix

@@ -11,16 +11,19 @@ class NoiseModel(ABC):
 
         Params:
         -------
-        X:   data matrix (n_samples, n_features)
-        W:   weight matrix (n_features, n_components)
-        Ez:  expected mean of posterior distribution of latent variables (n_samples, n_components)
-        Ezz: posterior second moment of latent variables (n_samples, n_components, n_components)
+        X       (n,d): data matrix 
+        W       (d,k): weight matrix 
+        Ez      (n,k): expected mean of posterior distribution of latent variables 
+        sum_Ezz (k,k): sum over n posterior second moment of latent variables 
         """
 
     @abstractmethod
-    def initialize(self, X: np.ndarray):
+    def initialize(self, X: np.ndarray, psi = None):
         """
         Initialize the noise model parameters based on X
+
+        X   (N,d): centered data
+        psi      : optional starting value (scalar for isotropic, (d,) for anisotropic
         """
 
     @abstractmethod
@@ -41,9 +44,9 @@ class IsotropicNoise(NoiseModel):
         self.d = None
         self.psi = None
 
-    def initialize(self, X) -> None:
+    def initialize(self, X, psi=None) -> None:
         self.d = X.shape[1]
-        self.psi = np.var(X, axis=0).mean()
+        self.psi = np.var(X, axis=0).mean() if psi is None else psi
 
     def m_step(self, X, W, Ez, sum_Ezz) -> None:
         """
@@ -74,9 +77,9 @@ class AnisotropicNoise(NoiseModel):
         self.d = None
         self.psi = None
 
-    def initialize(self, X):
+    def initialize(self, X, psi=None):
         self.d = X.shape[1]
-        self.psi = np.var(X, axis=0)
+        self.psi = np.var(X, axis=0) if psi is None else np.asarray(psi)   # (d,)
 
     def m_step(self, X, W, Ez, sum_Ezz) -> None:
         """

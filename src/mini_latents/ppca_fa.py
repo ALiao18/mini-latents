@@ -123,6 +123,34 @@ class pPCA(ProbabilisticLinearLatentModels):
         super().__init__(n_components)
         self.noise_model = IsotropicNoise()
 
+    def fit(self, X, n_components=None, max_iter=100, tol=1e-6, method='em'):
+        """
+        method = "closed_form": maximum likelihood solution, no EM iterations
+        method = "em"         : EM started from the same solution
+        """
+
+        if method not in ("em", "closed_form"):
+            raise ValueError(f"method must be 'em' or 'closed_form', got {method}")
+        if method == "closed_form":
+            max_iter = 0
+
+        super().fit(X, n_components, max_iter = max_iter, tol=tol)
+
+        if method == "closed_form":
+            Xc = X - self.mean_
+            self.log_likelihood_ = log_likelihood(Xc, self.components_, self.noise_model.noise_as_vec())
+            self.flags.converged = True
+
+        return self
+
+    def _init_noise(self, Xc, sigma2):
+        """Start variance at maximum likelihood value, consistent with W from _init_W"""
+        if sigma2 <= 0:
+            raise ValueError("pPCA needs n_components < x_dim: sigma^2_ML is the mean "
+                             "of the discarded eigenvalues, and there are none")
+        
+        self.noise_model.initialize(Xc, psi=sigma2)
+
 
 class FA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
