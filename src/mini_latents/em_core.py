@@ -47,7 +47,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     return Ez, sum_Ezz
 
 
-def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray) -> np.ndarray:
+def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, XtEz=None) -> np.ndarray:
     """
     Closed-form M-step update for W.
     W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1
@@ -57,14 +57,17 @@ def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray) -> np.ndarray:
     X       (N,d): centered data matrix
     Ez      (N,k): posterior mean
     sum_Ezz (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
+    XtEz    (d,k): X^T Ez = sum_i x_i Ez_i^T, optional; fit() passes it so the noise
+                   M-step reuses it instead of a second O(Ndk) product
 
     Returns
     ------
     W_new   (d,k): updated loading matrix
     """
-    sum_xEz = X.T @ Ez  # (d,k)
+    if XtEz is None:
+        XtEz = X.T @ Ez  # (d,k), O(Ndk)
     L = np.linalg.cholesky(sum_Ezz)  # (k,k)
-    W_new = cholesky_solve(sum_xEz.T, L).T  # (d,k)
+    W_new = cholesky_solve(XtEz.T, L).T  # (d,k)
 
     return W_new
 

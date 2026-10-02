@@ -15,3 +15,7 @@ PLAN.md
 .venv
 .venv.nosync/
 .DS_Store
+
+# meeting notes
+meeting_2026-10-02.md
+minimal_tests.md
