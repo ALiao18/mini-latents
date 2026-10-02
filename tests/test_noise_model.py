@@ -158,3 +158,17 @@ def test_m_step_with_precomputed_X2_matches_without(cls, em_state):
     without.m_step(X, W, Ez, Ezz)
 
     np.testing.assert_allclose(with_X2.psi, without.psi)
+
+
+@pytest.mark.parametrize("cls", [IsotropicNoise, AnisotropicNoise])
+def test_m_step_with_precomputed_XtEz_matches_without(cls, em_state):
+    """fit() shares m_step_W's X^T Ez with the noise M-step; the update must not change."""
+    X, W, Ez, Ezz = em_state
+
+    with_XtEz, without = cls(), cls()
+    with_XtEz.initialize(X)
+    without.initialize(X)
+    with_XtEz.m_step(X, W, Ez, Ezz, XtEz=X.T @ Ez)
+    without.m_step(X, W, Ez, Ezz)
+
+    np.testing.assert_allclose(with_XtEz.psi, without.psi)

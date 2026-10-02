@@ -67,9 +67,10 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         for i in range(max_iter):
             psi = self.noise_model.noise_as_vec()  # (d,)
             Ez, Ezz = e_step(Xc, W, psi)
+            XtEz = Xc.T @ Ez  # (d,k), O(Ndk): shared by both M-steps
 
-            W = m_step_W(Xc, Ez, Ezz)
-            self.noise_model.m_step(Xc, W, Ez, Ezz, X2=X2)
+            W = m_step_W(Xc, Ez, Ezz, XtEz=XtEz)
+            self.noise_model.m_step(Xc, W, Ez, Ezz, X2=X2, XtEz=XtEz)  # psi update uses the new W
 
             ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec(), X2=X2)
             self.ll_history_.append(ll_curr)

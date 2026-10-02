@@ -146,6 +146,14 @@ def test_m_step_W_solves_normal_equations(wpsi):
     np.testing.assert_allclose(W_new @ Ezz, X.T @ Ez, rtol=1e-7, atol=1e-9)
 
 
+def test_m_step_W_with_precomputed_XtEz_matches_without(wpsi):
+    """fit() computes X^T Ez once and shares it with the noise M-step; W_new must not change."""
+    X, W, Psi = wpsi
+    Ez, Ezz = e_step(X, W, Psi)
+
+    np.testing.assert_allclose(m_step_W(X, Ez, Ezz, XtEz=X.T @ Ez), m_step_W(X, Ez, Ezz))
+
+
 def test_m_step_W_shape(wpsi):
     X, W, Psi = wpsi
     Ez, Ezz = e_step(X, W, Psi)
