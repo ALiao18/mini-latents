@@ -8,3 +8,10 @@ test/
 generative_story.py
 figs_story
 TODO.md
+# local planning notes
+PLAN.md
+
+# environments and OS cruft
+.venv
+.venv.nosync/
+.DS_Store
