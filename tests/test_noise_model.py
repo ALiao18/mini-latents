@@ -144,3 +144,17 @@ def test_m_step_keeps_variances_positive(cls, em_state):
     noise.m_step(X, W, Ez, Ezz)
 
     assert np.all(noise.psi > 0)
+
+
+@pytest.mark.parametrize("cls", [IsotropicNoise, AnisotropicNoise])
+def test_m_step_with_precomputed_X2_matches_without(cls, em_state):
+    """fit() passes X2 = sum_n x_n^2 to skip a pass over X; the update must not change."""
+    X, W, Ez, Ezz = em_state
+
+    with_X2, without = cls(), cls()
+    with_X2.initialize(X)
+    without.initialize(X)
+    with_X2.m_step(X, W, Ez, Ezz, X2=np.sum(X**2, axis=0))
+    without.m_step(X, W, Ez, Ezz)
+
+    np.testing.assert_allclose(with_X2.psi, without.psi)

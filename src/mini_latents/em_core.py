@@ -69,7 +69,7 @@ def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray) -> np.ndarray:
     return W_new
 
 
-def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
+def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray, X2=None) -> float:
     """
     Marginal log-likelihood under the model, with z integrated out:
         x ~ N(0, C),   C = W W^T + Psi
@@ -87,6 +87,7 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     X   (N,d): centered data matrix
     W   (d,k): current loading matrix
     psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
+    X2  (d, ): sum_n x_nj^2
     """
     if psi.ndim != 1:
         raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
@@ -106,7 +107,10 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     logdet = np.log(psi).sum() + logdet_from_cholesky(L)  # log|C|
 
     B = X @ Psi_inv_W  # (N,k), O(Ndk)
-    quad_psi = np.einsum("nj,nj,j->", X, X, psi_inv)  # sum_n x_n^T Psi^-1 x_n, no (N,d) temporary
+
+    if X2 is None:
+        X2 = np.sum(X**2, axis=0)  # (d,) sum_n x_nj^2
+    quad_psi = psi_inv @ X2  # sum_n x_n^T Psi^-1 x_n = sum_j psi_j^-1 sum_n x_nj^2, O(d)
     quad_W = np.trace(cholesky_solve(B.T @ B, L))  # trace(M B^T B), O(Nk^2 + k^3)
     quad_term = quad_psi - quad_W  # sum_n x_n^T C^-1 x_n
 

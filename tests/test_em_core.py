@@ -179,6 +179,15 @@ def test_log_likelihood_matches_scipy(wpsi):
     np.testing.assert_allclose(ll, expected, rtol=1e-9)
 
 
+def test_log_likelihood_with_precomputed_X2_matches_without(wpsi):
+    """fit() passes X2 = sum_n x_n^2 to skip a pass over X; the answer must not change."""
+    X, W, psi = wpsi
+
+    np.testing.assert_allclose(
+        log_likelihood(X, W, psi, X2=np.sum(X**2, axis=0)), log_likelihood(X, W, psi)
+    )
+
+
 def test_log_likelihood_prefers_the_true_covariance():
     """The generating parameters must score higher than a mismatched W."""
     rng = np.random.default_rng(14)

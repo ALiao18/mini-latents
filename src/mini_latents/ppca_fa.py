@@ -52,6 +52,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
+        X2 = np.sum(Xc**2, axis=0)  # (d,) sum_n x_nj^2, fixed during EM: computed once, reused every iteration
         # N, _ = Xc.shape
 
         # initialize loading matrix with closed-form PCA solution.
@@ -68,9 +69,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             Ez, Ezz = e_step(Xc, W, psi)
 
             W = m_step_W(Xc, Ez, Ezz)
-            self.noise_model.m_step(Xc, W, Ez, Ezz)
+            self.noise_model.m_step(Xc, W, Ez, Ezz, X2=X2)
 
-            ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec())
+            ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec(), X2=X2)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
