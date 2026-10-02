@@ -187,11 +187,11 @@ def test_converges_across_ranks(iso_data, k):
     )
 
 
-def test_transform_and_inverse_transform_shapes(iso_data):
+def test_infer_latents_and_inverse_transform_shapes(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
     model = pPCA(k).fit(X, k, **CONVERGED)
-    Z = model.transform(X)
+    Z = model.infer_latents(X)
 
     assert Z.shape == (len(X), k)
     assert model.inverse_transform(Z).shape == X.shape
@@ -201,6 +201,6 @@ def test_reconstruction_beats_the_mean_only_baseline(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
     model = pPCA(k).fit(X, k, **CONVERGED)
-    recon_err = np.sum((X - model.inverse_transform(model.transform(X))) ** 2)
+    recon_err = np.sum((X - model.inverse_transform(model.infer_latents(X))) ** 2)
 
     assert recon_err < np.sum((X - X.mean(axis=0)) ** 2)

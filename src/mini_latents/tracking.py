@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
+
 @dataclass
-class FitFlags():
-    """Status flag from model fit. 
+class FitFlags:
+    """Status flag from model fit.
 
     Params
     ------

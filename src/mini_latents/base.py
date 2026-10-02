@@ -6,13 +6,12 @@ import numpy as np
 class LinearLatentModels(ABC):
     def __init__(self, n_components: int):
         self.n_components = n_components
-        self.components_ = None          # (n, d) eigenvectors of the top n components
+        self.components_ = None  # (d,k) eigenvectors of n_components
         self.mean_ = None
-        self.noise_cov_ = None
-        self.explained_variance_ = None  # (n,) eigenvalues of the top n_components
+        self.explained_variance_ = None  # (k, ) eigenvalues of n_components
         self.noise_variance_ = None
         self.flags = FitFlags()
-        self.Z = None
+        self.cov_ = None
 
     @abstractmethod
     def fit(self, X: np.ndarray):
@@ -21,9 +20,9 @@ class LinearLatentModels(ABC):
         """
 
     @abstractmethod
-    def transform(self, X: np.ndarray):
+    def infer_latents(self, X: np.ndarray):
         """
-        Transform the data X to the latent space
+        Infer the latent variables for the data X
         """
 
     def inverse_transform(self, Z: np.ndarray):

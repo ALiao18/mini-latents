@@ -8,35 +8,44 @@ from .tracking import FitFlags
 _LL_DECREASE_RTOL = 1e-10
 _LL_CONVERGE_RTOL = 1e-14
 
+
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
 
-    def transform(self, X):
+    def infer_latents(self, X):
+        """
+        Infer latent variables for X using current model parameters
+
+        Returns
+        ------
+        Ez (N,k): posterior mean of latent variables
+        """
         Xc = X - self.mean_
         Ez, _ = e_step(Xc, self.components_, self.noise_model.noise_as_vec())
         return Ez
 
     def fit(
-        self, 
-        X, 
-        n_components=None, 
-        max_iter=100, 
+        self,
+        X,
+        n_components=None,
+        max_iter=100,
         tol=1e-6,
-        ):
+    ):
         """
         Fit the model using the EM algorithm.
         1. center the data to mu = 0
         2. initialize W using self._init_W(Xc)
-        
+
         Stopping criterion:
-        fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than 
-        tol * total gain since baseline. 
+        fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than
+        tol * total gain since baseline.
 
         params:
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
         - tol         : per-sample log-likelihood gain. Stopping criteria for EM
         """
-        if n_components is None: n_components = self.n_components
+        if n_components is None:
+            n_components = self.n_components
 
         self.n_components = n_components
         self.flags = FitFlags()
@@ -46,12 +55,12 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Xc = X - self.mean_  # (N, d) broadcast over rows
         # N, _ = Xc.shape
 
-        # initialize loading matrix with closed-form PCA solution. 
-        W, sigma2 = self._init_W(Xc, n_components)
+        # initialize loading matrix with closed-form PCA solution.
+        W, sigma2 = self._init_W(Xc, n_components)  # (d, k), scalar
         self._init_noise(Xc, sigma2)
         self.ll_history_ = []
 
-        ll_curr = -np.inf  
+        ll_curr = -np.inf
         ll_base = -np.inf
         ll_old = -np.inf
 
@@ -70,10 +79,12 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
                 ll_old = ll_base
             elif ll_curr < ll_old - _LL_DECREASE_RTOL * abs(ll_old):
                 self.flags.decreasing_ll = True
-            elif tol > 0 and ll_curr - ll_old <= tol * (ll_old - ll_base) + _LL_CONVERGE_RTOL * abs(ll_old):
+            elif tol > 0 and ll_curr - ll_old <= tol * (
+                ll_old - ll_base
+            ) + _LL_CONVERGE_RTOL * abs(ll_old):
                 self.flags.converged = True
                 break
-            
+
             ll_old = ll_curr
 
         self.components_ = W
@@ -125,17 +136,20 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Used by pPCA, where (W, sigma2) is the exact ML solution. FA overrides this.
         """
         if sigma2 <= 0:
-            raise ValueError("need n_components < x_dim: sigma^2_ML is the mean "
-                             "of the discarded eigenvalues, and there are none")
-        
+            raise ValueError(
+                "need n_components < x_dim: sigma^2_ML is the mean "
+                "of the discarded eigenvalues, and there are none"
+            )
+
         self.noise_model.initialize(Xc, psi=sigma2)
+
 
 class pPCA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
         super().__init__(n_components)
         self.noise_model = IsotropicNoise()
 
-    def fit(self, X, n_components=None, max_iter=100, tol=1e-6, method='em'):
+    def fit(self, X, n_components=None, max_iter=100, tol=1e-6, method="em"):
         """
         method = "closed_form": maximum likelihood solution, no EM iterations
         method = "em"         : EM started from the same solution
@@ -146,15 +160,16 @@ class pPCA(ProbabilisticLinearLatentModels):
         if method == "closed_form":
             max_iter = 0
 
-        super().fit(X, n_components, max_iter = max_iter, tol=tol)
+        super().fit(X, n_components, max_iter=max_iter, tol=tol)
 
         if method == "closed_form":
             Xc = X - self.mean_
-            self.log_likelihood_ = log_likelihood(Xc, self.components_, self.noise_model.noise_as_vec())
+            self.log_likelihood_ = log_likelihood(
+                Xc, self.components_, self.noise_model.noise_as_vec()
+            )
             self.flags.converged = True
 
         return self
-
 
 
 class FA(ProbabilisticLinearLatentModels):

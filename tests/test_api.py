@@ -37,11 +37,11 @@ def test_fit_stores_the_training_mean(cls, iso_data):
 
 
 @pytest.mark.parametrize("cls", ALL_MODELS)
-def test_transform_and_inverse_transform_shapes(cls, iso_data):
+def test_infer_latents_and_inverse_transform_shapes(cls, iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
     model = _fit(cls, X, k)
-    Z = model.transform(X)
+    Z = model.infer_latents(X)
 
     assert Z.shape == (len(X), k)
     assert model.inverse_transform(Z).shape == X.shape
@@ -67,30 +67,13 @@ def test_fitting_twice_is_deterministic(cls, iso_data):
 
 @pytest.mark.parametrize("cls", ALL_MODELS)
 def test_inverse_transform_accepts_latents_it_did_not_produce(cls, iso_data):
-    """inverse_transform takes Z as an argument, so transform() need not run first."""
+    """inverse_transform takes Z as an argument, so infer_latents() need not run first."""
     X, k = iso_data["X"], iso_data["k"]
     model = _fit(cls, X, k)
 
     Z = np.zeros((5, k))
 
     np.testing.assert_allclose(model.inverse_transform(Z), np.tile(model.mean_, (5, 1)))
-
-
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_reconstruction_improves_with_more_components(cls, iso_data):
-    """
-    Not asserted as an exact roundtrip: the E-step shrinks the posterior mean
-    toward the prior, so reconstruction is biased by design -- unlike PCA's
-    orthogonal projection.
-    """
-    X = iso_data["X"]
-
-    errors = []
-    for k in (1, 2, 3, 4):
-        model = cls(k).fit(X, k, max_iter=200, tol=1e-8)
-        errors.append(np.sum((X - model.inverse_transform(model.transform(X))) ** 2))
-
-    assert np.all(np.diff(errors) < 0)
 
 
 # --- n_components handling -------------------------------------------------

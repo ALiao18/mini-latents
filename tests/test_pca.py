@@ -43,17 +43,17 @@ def test_explained_variance_equals_score_variance(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
     pca = PCA(k).fit(X)
-    Z = pca.transform(X)
+    Z = pca.infer_latents(X)
 
     np.testing.assert_allclose(
-        Z.var(axis=0, ddof=0), pca.explained_variance_, rtol=1e-10
+        Z.var(axis=0, ddof=0), pca.explained_variance_[:k], rtol=1e-10
     )
 
 
 def test_scores_are_centered_and_uncorrelated(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
-    Z = PCA(k).fit(X).transform(X)
+    Z = PCA(k).fit(X).infer_latents(X)
 
     np.testing.assert_allclose(Z.mean(axis=0), np.zeros(k), atol=1e-10)
     cov = np.cov(Z, rowvar=False, ddof=0)
@@ -62,7 +62,7 @@ def test_scores_are_centered_and_uncorrelated(iso_data):
     )
 
 
-def test_transform_reuses_stored_mean_on_held_out_data(iso_data):
+def test_infer_latents_reuses_stored_mean_on_held_out_data(iso_data):
     """New data must be centered with the training mean, not its own."""
     X = iso_data["X"]
     train, test = X[:400], X[400:]
@@ -70,7 +70,7 @@ def test_transform_reuses_stored_mean_on_held_out_data(iso_data):
     pca = PCA(3).fit(train)
 
     np.testing.assert_allclose(
-        pca.transform(test), (test - pca.mean_) @ pca.components_, rtol=1e-12
+        pca.infer_latents(test), (test - pca.mean_) @ pca.components_, rtol=1e-12
     )
 
 
@@ -99,7 +99,9 @@ def test_explained_variance_matches_sklearn_after_ddof_rescale(iso_data):
     theirs = SklearnPCA(n_components=k).fit(X)
 
     np.testing.assert_allclose(
-        ours.explained_variance_ * N / (N - 1), theirs.explained_variance_, rtol=1e-10
+        ours.explained_variance_[:k] * N / (N - 1),
+        theirs.explained_variance_,
+        rtol=1e-10,
     )
 
 
@@ -112,7 +114,9 @@ def test_full_rank_roundtrip_is_the_identity(iso_data):
 
     pca = PCA(d).fit(X)
 
-    np.testing.assert_allclose(pca.inverse_transform(pca.transform(X)), X, atol=1e-10)
+    np.testing.assert_allclose(
+        pca.inverse_transform(pca.infer_latents(X)), X, atol=1e-10
+    )
 
 
 def test_reconstruction_error_equals_discarded_eigenvalues(iso_data):
@@ -121,7 +125,7 @@ def test_reconstruction_error_equals_discarded_eigenvalues(iso_data):
     N = len(X)
 
     pca = PCA(k).fit(X)
-    residual = X - pca.inverse_transform(pca.transform(X))
+    residual = X - pca.inverse_transform(pca.infer_latents(X))
 
     eigvals = np.sort(np.linalg.eigvalsh(np.cov(X, rowvar=False, ddof=0)))[::-1]
     np.testing.assert_allclose(np.sum(residual**2), N * eigvals[k:].sum(), rtol=1e-8)
@@ -147,7 +151,7 @@ def test_reconstruction_error_decreases_with_more_components(iso_data):
     errors = []
     for k in range(1, X.shape[1] + 1):
         pca = PCA(k).fit(X)
-        errors.append(np.sum((X - pca.inverse_transform(pca.transform(X))) ** 2))
+        errors.append(np.sum((X - pca.inverse_transform(pca.infer_latents(X))) ** 2))
 
     assert np.all(np.diff(errors) < 1e-9)
 
@@ -162,15 +166,6 @@ def test_noise_variance_is_the_mean_discarded_eigenvalue(iso_data):
 
     eigvals = np.sort(np.linalg.eigvalsh(np.cov(X, rowvar=False, ddof=0)))[::-1]
     np.testing.assert_allclose(pca.noise_variance_, eigvals[k:].mean(), rtol=1e-10)
-
-
-def test_noise_cov_is_the_isotropic_residual(iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-    d = X.shape[1]
-
-    pca = PCA(k).fit(X)
-
-    np.testing.assert_allclose(pca.noise_cov_, pca.noise_variance_ * np.eye(d))
 
 
 def test_noise_variance_is_zero_at_full_rank(iso_data):
