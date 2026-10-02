@@ -15,12 +15,9 @@ from mini_latents.pca import PCA
 from mini_latents.ppca_fa import pPCA
 
 # These tests compare a fit against a closed form, against sklearn, or against
-# another fit, so EM has to actually reach the optimum rather than stop near it.
-# fit() stops on a per-sample log-likelihood gain, and in the convergence tail
-# that gain is float64 rounding noise, which makes the stopping iteration vary
-# between machines. A negative tol disables the early break, so every fit here
-# runs the same fixed number of iterations everywhere.
-CONVERGED = {"max_iter": 600, "tol": -np.inf}
+# another fit, so EM has to get close to the optimum. A tight relative tol stops
+# with ll error ~1e-12 and parameter error ~sqrt(tol) = 1e-6.
+CONVERGED = {"max_iter": 100_000, "tol": 1e-12}
 
 
 def _spectrum(X):
@@ -128,17 +125,47 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
 def test_n_iter_respects_max_iter(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
-    model = pPCA(k).fit(X, k, max_iter=7, tol=0)
+    model = pPCA(k).fit(X, k, max_iter=7, tol=0, method="em")
 
     assert model.n_iter_ == 7
 
 
-def test_stops_early_once_converged(iso_data):
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_em_from_random_start_reaches_the_closed_form(iso_data, monkeypatch, seed):
+    """
+    EM started from a random (W, sigma^2) converges to the closed-form ML solution
+    and stops on its own.
+
+    W is identified only up to rotation (W R gives the same model), so W itself is
+    not compared; the implied covariance W W^T + sigma^2 I is.
+
+    Tolerances: near the maximum the ll is quadratic in the parameters, so stopping
+    at relative ll error ~tol leaves parameter errors ~sqrt(tol). At tol=1e-12 this
+    data measures ll ~1e-12, sigma^2 ~3e-8, covariance ~6e-6 (relative); the bounds
+    below leave about 100x headroom.
+    """
     X, k = iso_data["X"], iso_data["k"]
+    d = X.shape[1]
 
-    model = pPCA(k).fit(X, k, max_iter=5000, tol=1e-9)
+    closed = pPCA(k).fit(X)
+    C_closed = closed.components_ @ closed.components_.T + closed.noise_model.psi * np.eye(d)
 
-    assert model.n_iter_ < 5000
+    rng = np.random.default_rng(seed)
+    W0 = rng.normal(size=(d, k))
+    sigma2_0 = rng.uniform(0.5, 2.0)
+    model = pPCA(k)
+    monkeypatch.setattr(model, "_init_W", lambda Xc, n_components: (W0, sigma2_0))
+    model.fit(X, method="em", tol=1e-12, max_iter=100_000)
+    C_em = model.components_ @ model.components_.T + model.noise_model.psi * np.eye(d)
+
+    assert model.flags.converged
+    assert not model.flags.decreasing_ll
+    assert model.n_iter_ > 2
+    # the closed form is the global maximum: EM can approach it, not exceed it
+    assert model.log_likelihood_ <= closed.log_likelihood_ + 1e-12 * abs(closed.log_likelihood_)
+    np.testing.assert_allclose(model.log_likelihood_, closed.log_likelihood_, rtol=1e-10)
+    np.testing.assert_allclose(model.noise_model.psi, closed.noise_model.psi, rtol=1e-6)
+    np.testing.assert_allclose(C_em, C_closed, rtol=0, atol=1e-4 * np.abs(C_closed).max())
 
 
 # --- recovery and limits ---------------------------------------------------

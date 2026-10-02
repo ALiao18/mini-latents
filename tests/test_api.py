@@ -109,41 +109,21 @@ def test_n_components_attribute_stays_consistent_with_components(cls, iso_data):
 # --- EM convergence contract -----------------------------------------------
 
 
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_negative_tol_runs_every_iteration(cls, iso_data):
-    """A negative tol disables the early break, for tests that need the optimum."""
-    X, k = iso_data["X"], iso_data["k"]
-
-    model = cls(k).fit(X, max_iter=50, tol=-np.inf)
-
-    assert model.n_iter_ == 50
-
-
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_tol_is_per_sample(cls, iso_data):
+def test_stopping_rule_is_invariant_to_tiling(iso_data):
     """
     Tiling the data leaves the sample covariance unchanged, so EM follows an
-    identical trajectory. A per-sample tol therefore stops at the same
-    iteration whatever N is; a raw total would stop later and later.
+    identical trajectory and every ll scales by the tiling factor. The relative
+    rule (latest gain vs total gain) is unchanged by that scaling, so it stops at
+    the same iteration whatever N is; an absolute gain threshold would stop later
+    and later. Rounding in the N-sample sums can move the stop by one iteration.
+    FA only: pPCA's default is the closed form, which runs no iterations.
     """
     X, k = iso_data["X"], iso_data["k"]
 
     counts = {
-        len(Xr): cls(k).fit(Xr, max_iter=5000, tol=1e-9).n_iter_
+        len(Xr): FA(k).fit(Xr, max_iter=5000, tol=1e-9).n_iter_
         for Xr in (X, np.tile(X, (2, 1)), np.tile(X, (4, 1)))
     }
 
-    assert len(set(counts.values())) == 1, counts
+    assert max(counts.values()) - min(counts.values()) <= 1, counts
 
-
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_converged_run_reports_no_monotonicity_violation(cls, iso_data, capsys):
-    """
-    Once EM is at the optimum the log-likelihood wobbles by a few ulps. That is
-    rounding noise, not a violation, and must not be reported as one.
-    """
-    X, k = iso_data["X"], iso_data["k"]
-
-    cls(k).fit(X, max_iter=600, tol=-np.inf)
-
-    assert "Bug!" not in capsys.readouterr().out

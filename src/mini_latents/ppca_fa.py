@@ -5,9 +5,6 @@ from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
-_LL_DECREASE_RTOL = 1e-10
-_LL_CONVERGE_RTOL = 1e-14
-
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
@@ -28,8 +25,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         self,
         X,
         n_components=None,
-        max_iter=100,
-        tol=1e-6,
+        max_iter=5000,
+        tol=1e-8,
     ):
         """
         Fit the model using the EM algorithm.
@@ -40,7 +37,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than
         tol * total gain since baseline.
 
-        params:
+        params
+        ------
+        - X           : (N, d) data matrix
         - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
         - tol         : per-sample log-likelihood gain. Stopping criteria for EM
         """
@@ -67,24 +66,23 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         for i in range(max_iter):
             psi = self.noise_model.noise_as_vec()  # (d,)
             Ez, Ezz = e_step(Xc, W, psi)
+
             W = m_step_W(Xc, Ez, Ezz)
             self.noise_model.m_step(Xc, W, Ez, Ezz)
 
             ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec())
             self.ll_history_.append(ll_curr)
 
-            # stopping criterion
-            if i == 1:
+            if i <= 1:
                 ll_base = ll_curr
-                ll_old = ll_base
-            elif ll_curr < ll_old - _LL_DECREASE_RTOL * abs(ll_old):
-                self.flags.decreasing_ll = True
-            elif tol > 0 and ll_curr - ll_old <= tol * (
-                ll_old - ll_base
-            ) + _LL_CONVERGE_RTOL * abs(ll_old):
-                self.flags.converged = True
-                break
 
+            # check for convergence and decreasing log likelihood
+            else:
+                if ll_curr < ll_old:
+                    self.flags.decreasing_ll = True
+                elif (ll_curr - ll_base) < (1 + tol) * (ll_old - ll_base):
+                    self.flags.converged = True
+                    break  # stop EM
             ll_old = ll_curr
 
         self.components_ = W
@@ -109,7 +107,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         - n_componenets: n principal components to retain
 
         returns:
-        - W (d,k): weight matrix initialization
+        - W      (d,k): weight matrix initialization
+        - sigma2 (scalar): isotropic noise variance initialiation
         """
         N, d = Xc.shape
 
@@ -118,7 +117,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         eigvals, eigvecs = (
             eigvals[::-1],
             eigvecs[:, ::-1],
-        )  # descending: eigvals (d,), eigvecs (d,d)
+        )  # eigvals (d,), eigvecs (d,d)
 
         # max likelihood noise variance = mean(discarded eigenvalues)
         sigma2 = eigvals[n_components:].mean() if n_components < d else 0.0  # scalar
@@ -149,10 +148,12 @@ class pPCA(ProbabilisticLinearLatentModels):
         super().__init__(n_components)
         self.noise_model = IsotropicNoise()
 
-    def fit(self, X, n_components=None, max_iter=100, tol=1e-6, method="em"):
+    def fit(self, X, n_components=None, max_iter=5000, tol=1e-8, method="closed_form"):
         """
-        method = "closed_form": maximum likelihood solution, no EM iterations
-        method = "em"         : EM started from the same solution
+        method = "closed_form": maximum likelihood solution, no EM iterations (default)
+        method = "em"         : EM started from the same solution. ISSUE: starts at the
+                                fixed point, so ll gains are rounding noise and the
+                                relative stopping rule may not fire before max_iter.
         """
 
         if method not in ("em", "closed_form"):
@@ -180,8 +181,5 @@ class FA(ProbabilisticLinearLatentModels):
     def _init_noise(self, Xc, sigma2):
         """
         FA: per-feature variance diag(S).
-
-        An isotropic sigma2_ML start is slow when feature scales differ: on the test data
-        with features rescaled by 0.25..4 it needed ~1400 iterations vs ~20 from diag(S).
         """
         self.noise_model.initialize(Xc)

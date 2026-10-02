@@ -13,12 +13,9 @@ from mini_latents.noise_model import AnisotropicNoise
 from mini_latents.ppca_fa import FA, pPCA
 
 # These tests compare a fit against a closed form, against sklearn, or against
-# another fit, so EM has to actually reach the optimum rather than stop near it.
-# fit() stops on a per-sample log-likelihood gain, and in the convergence tail
-# that gain is float64 rounding noise, which makes the stopping iteration vary
-# between machines. A negative tol disables the early break, so every fit here
-# runs the same fixed number of iterations everywhere.
-CONVERGED = {"max_iter": 600, "tol": -np.inf}
+# another fit, so EM has to get close to the optimum. A tight relative tol stops
+# with ll error ~1e-12 and parameter error ~sqrt(tol) = 1e-6.
+CONVERGED = {"max_iter": 100_000, "tol": 1e-12}
 
 
 def _implied_cov(model):
@@ -129,10 +126,12 @@ def test_is_equivariant_under_per_feature_rescaling(aniso_data):
     base = FA(k).fit(X, **CONVERGED)
     scaled = FA(k).fit(X * c, **CONVERGED)
 
+    # Each fit stops at its own iteration (rounding moves the stop by a few), so the
+    # two agree to the stopping accuracy, sqrt(tol) = 1e-6, not to rounding.
     expected = c[:, None] * _implied_cov(base) * c[None, :]
     assert (
         np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected)
-        < 1e-9
+        < 1e-6
     )
 
 

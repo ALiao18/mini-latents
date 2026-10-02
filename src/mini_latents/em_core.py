@@ -77,10 +77,10 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     Used for EM convergence monitoring (should increase monotonically
     each iteration).
 
-    NOTE
-    Update to
-    1. # matrix determinant lemma: log|C| = log|Psi| + log|M_inv|
-    2. # Woodbury: sum_n x_n^T C^-1 x_n = sum_n x_n^T Psi^-1 x_n - trace(M B^T B)
+    With M_inv = I + W^T Psi^-1 W (k,k) instead of (d,d) C:
+    1. determinant lemma: log|C| = sum_j log psi_j + log|M_inv|
+    2. Woodbury: C^-1 = Psi^-1 - Psi^-1 W M W^T Psi^-1, so with B = X Psi^-1 W (N,k)
+       sum_n x_n^T C^-1 x_n = sum_n x_n^T Psi^-1 x_n - trace(M B^T B)
 
     Params
     ------
@@ -90,14 +90,25 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray) -> float:
     """
     if psi.ndim != 1:
         raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
+    # C = W W^T + Psi is PD <=> every psi_j > 0; a zero psi_j with
+    # rank(W W^T) < d makes C singular 
+    if np.any(psi <= 0):
+        raise np.linalg.LinAlgError("C = W W^T + Psi is singular: psi must be positive")
 
-    Psi = np.diag(psi)
     N, d = X.shape
-    C = W @ W.T + Psi
+    k = W.shape[1]
 
-    L = np.linalg.cholesky(C)  # (d,d)
-    logdet = logdet_from_cholesky(L)
-    quad_term = np.sum(X.T * cholesky_solve(X.T, L))  # sum_n * x_n^T C^-1 x_n
+    psi_inv = 1 / psi  # (d,)
+    Psi_inv_W = psi_inv[:, None] * W  # (d,k), O(dk)
+
+    M_inv = np.eye(k) + W.T @ Psi_inv_W  # (k,k), symmetric PD
+    L = np.linalg.cholesky(M_inv)  # (k,k)
+    logdet = np.log(psi).sum() + logdet_from_cholesky(L)  # log|C|
+
+    B = X @ Psi_inv_W  # (N,k), O(Ndk)
+    quad_psi = np.einsum("nj,nj,j->", X, X, psi_inv)  # sum_n x_n^T Psi^-1 x_n, no (N,d) temporary
+    quad_W = np.trace(cholesky_solve(B.T @ B, L))  # trace(M B^T B), O(Nk^2 + k^3)
+    quad_term = quad_psi - quad_W  # sum_n x_n^T C^-1 x_n
 
     ll = -0.5 * (N * d * np.log(2 * np.pi) + N * logdet + quad_term)
     return ll
