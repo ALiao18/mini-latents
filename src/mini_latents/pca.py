@@ -1,6 +1,6 @@
 import numpy as np
 
-from .base import LinearLatentModels
+from .base import LinearLatentModels, fix_signs
 
 
 class PCA(LinearLatentModels):
@@ -25,7 +25,7 @@ class PCA(LinearLatentModels):
 
         # sort the eigenvalues and eigenvectors in descending order
         self.explained_variance_ = eigenvalues[: self.n_components]
-        self.components_ = eigenvectors[:, : self.n_components]
+        self.components_ = fix_signs(eigenvectors[:, : self.n_components])  # eigh may return v or -v
 
         # closed form pPCA solution for noise variance
         discarded = eigenvalues[self.n_components :]

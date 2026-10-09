@@ -1,6 +1,6 @@
 import numpy as np
 
-from .base import LinearLatentModels
+from .base import LinearLatentModels, fix_signs
 from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
@@ -87,7 +87,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
                     break  # stop EM
             ll_old = ll_curr
 
-        self.components_ = W
+        self.components_ = fix_signs(W)  # EM is sign-equivariant: flipping a column of W leaves C unchanged
         self.n_iter_ = len(self.ll_history_)
         self.log_likelihood_ = ll_curr
         return self
@@ -149,17 +149,20 @@ class pPCA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
         super().__init__(n_components)
         self.noise_model = IsotropicNoise()
+        self.method = "closed_form"
+        self.random_seed = None
 
-    def fit(self, X, n_components=None, max_iter=5000, tol=1e-8, method="closed_form"):
+    def fit(self, X, n_components=None, max_iter=5000, tol=1e-8, method="closed_form", random_seed=None):
         """
-        method = "closed_form": maximum likelihood solution, no EM iterations (default)
-        method = "em"         : EM started from the same solution. ISSUE: starts at the
-                                fixed point, so ll gains are rounding noise and the
-                                relative stopping rule may not fire before max_iter.
+        method = "closed_form": ML solution (eigh of the covariance), no EM (default)
+        method = "em"         : EM from a random start, W ~ N(0, 1) and sigma^2 = mean feature
+                                variance. 
         """
 
         if method not in ("em", "closed_form"):
             raise ValueError(f"method must be 'em' or 'closed_form', got {method}")
+        self.method = method
+        self.random_seed = random_seed
         if method == "closed_form":
             max_iter = 0
 
@@ -173,6 +176,13 @@ class pPCA(ProbabilisticLinearLatentModels):
             self.flags.converged = True
 
         return self
+
+    def _init_W(self, Xc, n_components):
+        """closed_form: the ML solution. em: random W, sigma^2 = mean feature variance."""
+        if self.method == "em":
+            W = np.random.default_rng(self.random_seed).normal(size=(Xc.shape[1], n_components))  # (d, k)
+            return W, Xc.var(axis=0).mean()
+        return super()._init_W(Xc, n_components)
 
 
 class FA(ProbabilisticLinearLatentModels):

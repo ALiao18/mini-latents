@@ -5,11 +5,11 @@ implementation plus the invariances the model is defined by.
 """
 
 import numpy as np
-from helpers import em_ll_trace, subspace_dist
+import pytest
+from helpers import subspace_dist
 from sklearn.decomposition import FactorAnalysis as SklearnFA
 
 from mini_latents.em_core import log_likelihood
-from mini_latents.noise_model import AnisotropicNoise
 from mini_latents.ppca_fa import FA, pPCA
 
 # These tests compare a fit against a closed form, against sklearn, or against
@@ -63,14 +63,34 @@ def test_uniquenesses_match_sklearn(aniso_data):
 # --- EM behaviour ----------------------------------------------------------
 
 
-def test_em_log_likelihood_is_monotone(aniso_data):
-    X, k = aniso_data["X"], aniso_data["k"]
-    Xc = X - X.mean(axis=0)
+@pytest.mark.fit
+def test_fit(fa_fitted_converged):
+    """Test basic fitting: convergence flags and iteration count."""
+    model = fa_fitted_converged
 
-    model = FA(k)
-    lls = em_ll_trace(AnisotropicNoise(), Xc, model._init_W(Xc, k)[0], n_iter=150)
+    assert model.flags.converged
+    assert not model.flags.decreasing_ll
+    # Regression baseline for fixed seeds (data seed 1, PCA start, default tol=1e-8).
+    assert model.n_iter_ == 216
 
-    assert np.all(np.diff(lls) >= -1e-8)
+
+@pytest.mark.fit
+def test_ll_monotonicity(fa_fitted_converged):
+    """Test that the log-likelihood from fit() is monotonically non-decreasing.
+
+    Uses sqrt(machine epsilon) as tolerance to account for floating-point
+    accumulation errors while remaining precision-aware.
+    """
+    ll = np.array(fa_fitted_converged.ll_history_)
+
+    # sqrt(machine epsilon) as tolerance for floating-point accumulation
+    tol = float(np.sqrt(np.finfo(ll.dtype).eps))
+
+    ll_diff = np.diff(ll)
+    assert np.all(ll_diff >= -tol), (
+        f"Log-likelihood decreased by more than tolerance. "
+        f"Min diff: {ll_diff.min():.2e}, tolerance: {-tol:.2e}"
+    )
 
 
 def test_fa_fits_at_least_as_well_as_ppca(aniso_data):

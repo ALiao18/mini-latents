@@ -105,7 +105,7 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray, X2=None) -> fl
     psi_inv = 1 / psi  # (d,)
     Psi_inv_W = psi_inv[:, None] * W  # (d,k), O(dk)
 
-    M_inv = np.eye(k) + W.T @ Psi_inv_W  # (k,k), symmetric PD
+    M_inv = np.eye(k) + W.T @ Psi_inv_W  # (k,k), symmetric PD 
     L = np.linalg.cholesky(M_inv)  # (k,k)
     logdet = np.log(psi).sum() + logdet_from_cholesky(L)  # log|C|
 
@@ -119,3 +119,4 @@ def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray, X2=None) -> fl
 
     ll = -0.5 * (N * d * np.log(2 * np.pi) + N * logdet + quad_term)
     return ll
+

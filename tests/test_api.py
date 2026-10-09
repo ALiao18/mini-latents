@@ -55,6 +55,19 @@ def test_components_are_finite(cls, iso_data):
 
 
 @pytest.mark.parametrize("cls", ALL_MODELS)
+def test_components_largest_entry_is_positive(cls, iso_data):
+    """Each column's sign is arbitrary (v and -v fit equally well); fit picks the one whose largest |entry| is positive.
+
+    k = d - 1 (the most pPCA allows): with few columns all signs can come out positive by chance.
+    """
+    X = iso_data["X"]
+    W = _fit(cls, X, X.shape[1] - 1).components_
+
+    largest = W[np.argmax(np.abs(W), axis=0), np.arange(W.shape[1])]
+    assert np.all(largest > 0)
+
+
+@pytest.mark.parametrize("cls", ALL_MODELS)
 def test_fitting_twice_is_deterministic(cls, iso_data):
     """No hidden RNG anywhere in fit()."""
     X, k = iso_data["X"], iso_data["k"]

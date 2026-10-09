@@ -2,14 +2,9 @@
 .python-version
 __pycache__/
 probset8.pdf
-benchmark/
-bench_results/
-test/
-generative_story.py
-figs_story
-TODO.md
-# local planning notes
-PLAN.md
+results/
+data/
+scripts/
 
 # environments and OS cruft
 .venv
@@ -19,3 +14,7 @@ PLAN.md
 # meeting notes
 meeting_2026-10-02.md
 minimal_tests.md
+
+# local planning notes
+PLAN.md
+TODO.md

@@ -6,6 +6,8 @@ Every fixture is seeded, so the whole suite is deterministic.
 import numpy as np
 import pytest
 
+from mini_latents.ppca_fa import FA, pPCA
+
 
 def _make_data(rng, N, d, k, noise_std):
     """X = Z W^T + mu + eps, with eps ~ N(0, diag(noise_std**2))."""
@@ -16,16 +18,19 @@ def _make_data(rng, N, d, k, noise_std):
     return X, W_true, mu_true, noise_std**2
 
 
-@pytest.fixture
-def iso_data():
-    """Isotropic noise -- pPCA's generative assumption holds exactly."""
+def _iso_data():
     rng = np.random.default_rng(0)
     X, W_true, mu_true, psi_true = _make_data(rng, 500, 8, 3, 0.5)
     return {"X": X, "W_true": W_true, "mu_true": mu_true, "psi_true": psi_true, "k": 3}
 
 
 @pytest.fixture
-def aniso_data():
+def iso_data():
+    """Isotropic noise -- pPCA's generative assumption holds exactly."""
+    return _iso_data()
+
+
+def _aniso_data():
     """
     Heteroscedastic per-feature noise -- FA's assumption holds exactly.
 
@@ -38,6 +43,12 @@ def aniso_data():
     noise_std = np.linspace(0.5, 1.5, 8)
     X, W_true, mu_true, psi_true = _make_data(rng, 2000, 8, 3, noise_std)
     return {"X": X, "W_true": W_true, "mu_true": mu_true, "psi_true": psi_true, "k": 3}
+
+
+@pytest.fixture
+def aniso_data():
+    """Heteroscedastic per-feature noise -- FA's assumption holds exactly."""
+    return _aniso_data()
 
 
 @pytest.fixture
@@ -54,3 +65,15 @@ def spd_matrix():
     rng = np.random.default_rng(3)
     A = rng.normal(size=(6, 6))
     return A @ A.T + 6 * np.eye(6)
+
+
+@pytest.fixture(scope="module")
+def ppca_fitted_converged():
+    """Fit pPCA by EM (random start, random_seed=0) to convergence (default tol=1e-8) on iso_data."""
+    return pPCA(3).fit(_iso_data()["X"], method="em", random_seed=0)
+
+
+@pytest.fixture(scope="module")
+def fa_fitted_converged():
+    """Fit FA by EM to convergence (default tol=1e-8) on aniso_data."""
+    return FA(3).fit(_aniso_data()["X"])
