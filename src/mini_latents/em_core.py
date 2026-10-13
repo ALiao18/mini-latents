@@ -49,7 +49,12 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     return Ez, sum_Ezz
 
 
-def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, XtEz=None) -> np.ndarray:
+def m_step_W(
+        X: np.ndarray, 
+        Ez: np.ndarray, 
+        sum_Ezz: np.ndarray, 
+        XtEz: np.ndarray | None = None
+        ) -> np.ndarray:
     """
     Closed-form M-step update for W.
     W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1

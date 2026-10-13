@@ -71,6 +71,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
             W = m_step_W(Xc, Ez, Ezz, XtEz=XtEz)
             self.noise_model.m_step(Xc, W, Ez, Ezz, X2=X2, XtEz=XtEz)  # psi update uses the new W
+            if self.noise_model.floored:
+                self.flags.heywood = True
 
             ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec(), X2=X2)
             self.ll_history_.append(ll_curr)

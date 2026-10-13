@@ -15,6 +15,7 @@ class FitFlags:
 
     converged: bool = False
     decreasing_ll: bool = False
+    heywood: bool = False
 
     def display(self) -> None:
         """
@@ -22,3 +23,5 @@ class FitFlags:
         """
         print(f"converged: {self.converged}")
         print(f"decreasing ll: {self.decreasing_ll}")
+        print(f"heywood: {self.heywood}")
+        

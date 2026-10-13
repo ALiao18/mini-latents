@@ -45,10 +45,13 @@ class IsotropicNoise(NoiseModel):
     def __init__(self):
         self.d = None
         self.psi = None
+        self.var_floor = None
+        self.floored = None
 
     def initialize(self, X, psi=None) -> None:
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0).mean() if psi is None else psi
+        self.floored = False
 
     def m_step(self, X: np.ndarray, W: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, X2=None, XtEz=None) -> None:
         """
@@ -71,7 +74,7 @@ class IsotropicNoise(NoiseModel):
         if XtEz is None:
             XtEz = X.T @ Ez  # (d,k), O(Ndk)
         cross_term = 2 * np.sum(W * XtEz)  # scalar: 2 sum_n (W^T x_n)^T Ez_n = 2 trace(W^T X^T Ez), O(dk)
-        trace_term = np.trace((W.T @ W) * sum_Ezz)  # scalar: trace of (k, k)
+        trace_term = np.sum((W.T @ W) * sum_Ezz) # scalar sum_n Ez_n^T W^T W Ez_n = trace(W^T W sum_n Ezz_n), O(dk^2) 
 
         S = recon_term - cross_term + trace_term  # scalar
         self.psi = S / (N * d)  # scalar
@@ -84,14 +87,24 @@ class AnisotropicNoise(NoiseModel):
     def __init__(self):
         self.d = None
         self.psi = None
+        self.var_floor = None
+        self.floored = None
 
-    def initialize(self, X, psi=None):
+    def initialize(self, X, psi=None, min_var_frac = 0.01) -> None:
         self.d = X.shape[1]
         self.psi = (
             np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)
         )  # scalar or (d,) -> (d,)
+        self.var_floor = min_var_frac * np.var(X, axis=0) # (d,)
 
-    def m_step(self, X: np.ndarray, W: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, X2=None, XtEz=None) -> None:
+    def m_step(self, 
+               X: np.ndarray, 
+               W: np.ndarray, 
+               Ez: np.ndarray, 
+               sum_Ezz: np.ndarray, 
+               X2: np.ndarray | None =None, 
+               XtEz: np.ndarray | None = None
+               ) -> None:
         """
         Noise update for FA. O(Ndk + dk^2)
 
@@ -123,6 +136,8 @@ class AnisotropicNoise(NoiseModel):
 
         R = recon_term - cross_term + quad_term  # (d,)
         self.psi = R / N  # (d,)
+        self.floored = np.any(self.psi < self.var_floor)
+        self.psi = np.clip(self.psi, self.var_floor, None) 
 
     def noise_as_vec(self):
         return self.psi
