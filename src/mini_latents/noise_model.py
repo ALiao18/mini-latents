@@ -71,7 +71,7 @@ class IsotropicNoise(NoiseModel):
         if XtEz is None:
             XtEz = X.T @ Ez  # (d,k), O(Ndk)
         cross_term = 2 * np.sum(W * XtEz)  # scalar: 2 sum_n (W^T x_n)^T Ez_n = 2 trace(W^T X^T Ez), O(dk)
-        trace_term = np.trace(W.T @ W @ sum_Ezz)  # scalar: trace of (k, k)
+        trace_term = np.trace((W.T @ W) * sum_Ezz)  # scalar: trace of (k, k)
 
         S = recon_term - cross_term + trace_term  # scalar
         self.psi = S / (N * d)  # scalar

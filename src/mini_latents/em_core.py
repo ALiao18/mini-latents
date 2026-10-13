@@ -16,7 +16,7 @@ def logdet_from_cholesky(L: np.ndarray) -> float:
 
 def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     """
-    Compute posterior over latent variables z | x for each sample.
+    Compute posterior over latent variables z | x for each sample. O(Ndk)
 
     Params
     ------
@@ -111,7 +111,7 @@ def log_likelihood(
         msg = "C = W W^T + Psi is singular: psi must be positive"
         raise np.linalg.LinAlgError(msg)
     if X2 is None:
-        X2 = np.sum(X**2, axis=0)  # (d,) sum_n x_nj^2
+        X2 = np.einsum("ij,ij->j", X, X)  # (d,) sum_n x_nj^2
 
     # setup
     N, d = X.shape

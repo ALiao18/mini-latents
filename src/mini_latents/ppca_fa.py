@@ -52,7 +52,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
-        X2 = np.sum(Xc**2, axis=0)  # (d,) sum_n x_nj^2, fixed during EM: computed once, reused every iteration
+        X2 = np.einsum("ij,ij->j", Xc, Xc)  # (d,) sum_n x_nj^2, fixed during EM: computed once
         # N, _ = Xc.shape
 
         # initialize loading matrix with closed-form PCA solution.
