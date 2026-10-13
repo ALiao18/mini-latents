@@ -8,7 +8,9 @@ def cholesky_solve(B: np.ndarray, L: np.ndarray) -> np.ndarray:
 
 
 def logdet_from_cholesky(L: np.ndarray) -> float:
-    """log|A| = 2 sum(log(diag(L))) for A = L L^T"""
+    """
+    Cholesky factorization of SPD matrix A = L L^T gives log determinant:
+    log|A| = 2 sum(log(diag(L))) for A = L L^T"""
     return 2 * np.log(np.diagonal(L)).sum()
 
 
@@ -72,51 +74,73 @@ def m_step_W(X: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, XtEz=None) -> n
     return W_new
 
 
-def log_likelihood(X: np.ndarray, W: np.ndarray, psi: np.ndarray, X2=None) -> float:
+def log_likelihood(
+        X: np.ndarray, 
+        W: np.ndarray, 
+        psi: np.ndarray, 
+        X2: np.ndarray | None = None
+        ) -> float:
     """
     Marginal log-likelihood under the model, with z integrated out:
         x ~ N(0, C),   C = W W^T + Psi
-
-    Used for EM convergence monitoring (should increase monotonically
-    each iteration).
 
     With M_inv = I + W^T Psi^-1 W (k,k) instead of (d,d) C:
     1. determinant lemma: log|C| = sum_j log psi_j + log|M_inv|
     2. Woodbury: C^-1 = Psi^-1 - Psi^-1 W M W^T Psi^-1, so with B = X Psi^-1 W (N,k)
        sum_n x_n^T C^-1 x_n = sum_n x_n^T Psi^-1 x_n - trace(M B^T B)
 
-    Params
-    ------
-    X   (N,d): centered data matrix
+    Parameters
+    ----------
+    X: ndarray of shape (N,d)
+        centered data matrix
     W   (d,k): current loading matrix
     psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
     X2  (d, ): sum_n x_nj^2
+
+    Returns
+    ----------
+    log_likelihood: float
+        marginal log-likelihood of the data under the parameters W, psi over z
     """
     if psi.ndim != 1:
-        raise ValueError(f"psi must be the (d, ) diagonal, got shape {psi.shape}")
+        msg = f"psi must be the (d, ) diagonal, got shape {psi.shape}"
+        raise ValueError(msg)
     # C = W W^T + Psi is PD <=> every psi_j > 0; a zero psi_j with
     # rank(W W^T) < d makes C singular 
     if np.any(psi <= 0):
-        raise np.linalg.LinAlgError("C = W W^T + Psi is singular: psi must be positive")
-
-    N, d = X.shape
-    k = W.shape[1]
-
-    psi_inv = 1 / psi  # (d,)
-    Psi_inv_W = psi_inv[:, None] * W  # (d,k), O(dk)
-
-    M_inv = np.eye(k) + W.T @ Psi_inv_W  # (k,k), symmetric PD 
-    L = np.linalg.cholesky(M_inv)  # (k,k)
-    logdet = np.log(psi).sum() + logdet_from_cholesky(L)  # log|C|
-
-    B = X @ Psi_inv_W  # (N,k), O(Ndk)
-
+        msg = "C = W W^T + Psi is singular: psi must be positive"
+        raise np.linalg.LinAlgError(msg)
     if X2 is None:
         X2 = np.sum(X**2, axis=0)  # (d,) sum_n x_nj^2
-    quad_psi = psi_inv @ X2  # sum_n x_n^T Psi^-1 x_n = sum_j psi_j^-1 sum_n x_nj^2, O(d)
-    quad_W = np.trace(cholesky_solve(B.T @ B, L))  # trace(M B^T B), O(Nk^2 + k^3)
-    quad_term = quad_psi - quad_W  # sum_n x_n^T C^-1 x_n
 
-    ll = -0.5 * (N * d * np.log(2 * np.pi) + N * logdet + quad_term)
-    return ll
+    # setup
+    N, d = X.shape
+    k = W.shape[1] 
+    psi_inv = 1 / psi  # (d,)
+    psi_inv_W = psi_inv[:, None] * W # (d,k), O(dk)
+    M_inv =  np.eye(k) + W.T @ psi_inv_W  # (k,k), O(dk^2) SPD
+    L = np.linalg.cholesky(M_inv)        # (k,k) O(k^3)
+
+    # term 1    determinant lemma: N log|C| = N (log |Psi| + log|M_inv|)
+    # log determinant of diag = sum of log of diagonal entries, O(d)
+    log_Psi = np.log(psi).sum() 
+    # log-determinant from Cholesky factorization
+    log_M_inv = logdet_from_cholesky(L)  # log|M_inv|, O(k)
+    log_C = log_Psi + log_M_inv
+    N_log_C = N * log_C
+
+    # term 2   Woodbury identity: sum_n x_n^T C^-1 x_n = quad_psi - quad_W
+    U = X @ psi_inv_W # (N,k), O(Ndk)
+    # 1. sum (x^T psi_inv x) 
+    quad_psi = psi_inv @ X2 # O(d)
+    # 2. tr(M B^T B) with B = X psi_inv W
+    quad_W = np.trace(cholesky_solve(U.T @ U, L)) # O(Nk^2 + k^3)
+    quad_C_inv = quad_psi - quad_W
+
+    # marginal log-likelihood
+    constant = N * d * np.log(2 * np.pi) 
+
+    return -1/2 * (constant + N_log_C + quad_C_inv) 
+
+
 
