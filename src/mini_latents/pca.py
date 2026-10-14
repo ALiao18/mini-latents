@@ -1,4 +1,6 @@
 import numpy as np
+import sklearn
+import torch
 
 from .base import LinearLatentModels, fix_signs
 
@@ -10,29 +12,31 @@ class PCA(LinearLatentModels):
     def fit(self, X: np.ndarray):
         """
         Fit the PCA model to the data X
+        
+        Assumes sparse matrices in most cases, so uses torch.svd_lowrank (halko et al., 2009). 
+        Uses paper recommendation of oversampling by 10. 
         """
         # center the data
         self.mean_ = X.mean(axis=0)
-        Xc = X - self.mean_
+        Xc = torch.from_numpy(X - self.mean_)
+        n, d = Xc.shape
+        k = self.n_components
+        q = min(k + 10, n, d)
 
-        # get the covariance matrix
-        self.cov_ = np.cov(Xc, rowvar=False, ddof=0)
-        eigenvalues, eigenvectors = np.linalg.eigh(self.cov_)
-        eigenvalues, eigenvectors = (
-            eigenvalues[::-1],
-            eigenvectors[:, ::-1],
-        )  # eigh is ascending
+        # Algorithm 5.1 from Halko et al., 2009
+        # better for sparse matrices
+        # for dense matrices, use torch.linalg.svd or np.linalg.svd
+        with torch.random.fork_rng():
+            torch.manual_seed(42)
+            _, S, V = torch.svd_lowrank(Xc, q = q) # V: (d, q)
 
         # sort the eigenvalues and eigenvectors in descending order
-        self.explained_variance_ = eigenvalues[: self.n_components]
-        self.components_ = fix_signs(eigenvectors[:, : self.n_components])  # eigh may return v or -v
+        eigenvalues = (S[:k] ** 2 / n).numpy()
+        self.explained_variance_ = eigenvalues
+        self.components_ = fix_signs(V[:, :k].numpy())
 
-        # closed form pPCA solution for noise variance
-        discarded = eigenvalues[self.n_components :]
-        self.noise_variance_ = (
-            float(max(discarded.mean(), 0.0)) if discarded.size else 0.0
-        )
-
+        total_var = (Xc ** 2).sum().item() / n  # = tr(cov), no dxd matrix
+        self.noise_variance_ = max((total_var - eigenvalues.sum()) / (d-k), 0.0) if d > k else 0.0
         return self
 
     def infer_latents(self, X: np.ndarray):

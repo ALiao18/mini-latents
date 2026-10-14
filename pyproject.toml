@@ -16,6 +16,7 @@ dependencies = [
     "ruff>=0.16.9",
     "scikit-learn>=1.9.0",
     "scipy>=1.18.1",
+    "torch>=2.14.1",
 ]
 
 [project.scripts]
