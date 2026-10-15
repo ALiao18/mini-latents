@@ -11,6 +11,8 @@ class FitFlags:
         True if log likelihood converged before reaching max_iters
     decreasing_ll: bool, default False
         True if log likelihood decreased during training
+    heywood: bool, default False
+        True if variance of any dimension (psi) is less than set noise floor
     """
 
     converged: bool = False

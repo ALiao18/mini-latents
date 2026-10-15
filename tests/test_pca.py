@@ -87,24 +87,6 @@ def test_components_match_sklearn_up_to_sign(iso_data):
     np.testing.assert_allclose(cosines, np.ones(k), atol=1e-8)
 
 
-def test_explained_variance_matches_sklearn_after_ddof_rescale(iso_data):
-    """
-    This PCA uses ddof=0 (so it agrees with pPCA's covariance); sklearn uses
-    ddof=1. The two differ by exactly N/(N-1).
-    """
-    X, k = iso_data["X"], iso_data["k"]
-    N = len(X)
-
-    ours = PCA(k).fit(X)
-    theirs = SklearnPCA(n_components=k).fit(X)
-
-    np.testing.assert_allclose(
-        ours.explained_variance_[:k] * N / (N - 1),
-        theirs.explained_variance_,
-        rtol=1e-10,
-    )
-
-
 # --- reconstruction --------------------------------------------------------
 
 

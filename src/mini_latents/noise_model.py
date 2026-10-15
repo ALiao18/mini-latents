@@ -95,7 +95,7 @@ class AnisotropicNoise(NoiseModel):
         self.psi = (
             np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)
         )  # scalar or (d,) -> (d,)n.
-        self.var_floor = min_var_frac * np.diag(np.cov(X, rowvar=False)) # (d,)
+        self.var_floor = min_var_frac * np.diag(np.cov(X, rowvar=False)) # (d,), O(Nd^2)
 
     def m_step(self, 
                X: np.ndarray, 
