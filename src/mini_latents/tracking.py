@@ -8,7 +8,7 @@ class FitFlags:
     Params
     ------
     converged: bool, default False
-        True if log likelihood converged before reaching max_iters
+        True if log likelihood converged before reaching max_iter
     decreasing_ll: bool, default False
         True if log likelihood decreased during training
     heywood: bool, default False
@@ -26,4 +26,3 @@ class FitFlags:
         print(f"converged: {self.converged}")
         print(f"decreasing ll: {self.decreasing_ll}")
         print(f"heywood: {self.heywood}")
-        

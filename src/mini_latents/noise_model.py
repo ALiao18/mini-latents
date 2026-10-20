@@ -5,7 +5,14 @@ import numpy as np
 
 class NoiseModel(ABC):
     @abstractmethod
-    def m_step(self, X: np.ndarray, W, Ez: np.ndarray, Ezz: np.ndarray, X2=None, XtEz=None):
+    def m_step(
+        self, 
+        X: np.ndarray, 
+        W, Ez: np.ndarray, 
+        Ezz: np.ndarray, 
+        X2=None, 
+        XtEz=None
+    ):
         """
         m-step of the EM algorithm
 
@@ -46,35 +53,37 @@ class IsotropicNoise(NoiseModel):
         self.d = None
         self.psi = None
         self.var_floor = None
-        self.floored = None
 
     def initialize(self, X, psi=None) -> None:
         self.d = X.shape[1]
         self.psi = np.var(X, axis=0).mean() if psi is None else psi
-        self.floored = False
 
-    def m_step(self, X: np.ndarray, W: np.ndarray, Ez: np.ndarray, sum_Ezz: np.ndarray, X2=None, XtEz=None) -> None:
+    def m_step(
+        self,
+        W: np.ndarray,
+        sum_Ezz: np.ndarray,
+        N: int,
+        X2: np.ndarray,
+        XtEz: np.ndarray,
+    ) -> None:
         """
         Noise update for pPCA. O(Ndk + dk^2)
 
         params
         ------
-        X       (N, d): centered data
         W       (d, k): loading matrix
-        Ez      (N, k): posterior mean
         sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
         X2      (d,  ): sum_n x_nj^2, optional; computed from X if None
         XtEz    (d, k): X^T Ez, optional; fit() reuses m_step_W's product
         """
-        N, d = X.shape
-
-        if X2 is None:
-            X2 = np.sum(X**2, axis=0)  # (d,)
+        d = W.shape[0]
         recon_term = X2.sum()  # scalar: sums j over (d,)
-        if XtEz is None:
-            XtEz = X.T @ Ez  # (d,k), O(Ndk)
-        cross_term = 2 * np.sum(W * XtEz)  # scalar: 2 sum_n (W^T x_n)^T Ez_n = 2 trace(W^T X^T Ez), O(dk)
-        trace_term = np.sum((W.T @ W) * sum_Ezz) # scalar sum_n Ez_n^T W^T W Ez_n = trace(W^T W sum_n Ezz_n), O(dk^2) 
+        cross_term = 2 * np.sum(
+            W * XtEz
+        )  # scalar: 2 sum_n (W^T x_n)^Ez_n = 2 trace(W^T X^T Ez), O(dk)
+        trace_term = np.sum(
+            (W.T @ W) * sum_Ezz
+        )  # scalar sum_n Ez_n^T W^T W Ez_n = trace(W^T W sum_n Ezz_n), O(dk^2)
 
         S = recon_term - cross_term + trace_term  # scalar
         self.psi = S / (N * d)  # scalar
@@ -90,21 +99,21 @@ class AnisotropicNoise(NoiseModel):
         self.var_floor = None
         self.floored = None
 
-    def initialize(self, X, psi=None, min_var_frac = 0.01) -> None:
+    def initialize(self, X, psi=None, min_var_frac=0.01) -> None:
         self.d = X.shape[1]
         self.psi = (
             np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)
-        )  # scalar or (d,) -> (d,)n.
-        self.var_floor = min_var_frac * np.diag(np.cov(X, rowvar=False)) # (d,), O(Nd^2)
+        )  # scalar or (d,) -> (d,)
+        self.var_floor = min_var_frac * np.var(X, axis=0)  # (d,), O(Nd)
 
-    def m_step(self, 
-               X: np.ndarray, 
-               W: np.ndarray, 
-               Ez: np.ndarray, 
-               sum_Ezz: np.ndarray, 
-               X2: np.ndarray | None =None, 
-               XtEz: np.ndarray | None = None
-               ) -> None:
+    def m_step(
+        self,
+        W: np.ndarray,
+        sum_Ezz: np.ndarray,
+        N: int,
+        X2: np.ndarray,
+        XtEz: np.ndarray,
+    ) -> None:
         """
         Noise update for FA. O(Ndk + dk^2)
 
@@ -124,20 +133,14 @@ class AnisotropicNoise(NoiseModel):
         X2      (d,  ): sum_n x_nj^2, optional; computed from X if None
         XtEz    (d, k): X^T Ez, optional; fit() reuses m_step_W's product
         """
-        N, self.d = X.shape
-
-        if X2 is None:
-            X2 = np.sum(X**2, axis=0)  # (d,)
         recon_term = X2  # (d,): sums n over (N, d)
-        if XtEz is None:
-            XtEz = X.T @ Ez  # (d,k), O(Ndk)
         cross_term = 2 * np.sum(W * XtEz, axis=1)  # (d,): sums k over (d, k), O(dk)
         quad_term = np.sum((W @ sum_Ezz) * W, axis=1)  # (d,): sums k over (d, k)
 
         R = recon_term - cross_term + quad_term  # (d,)
         self.psi = R / N  # (d,)
         self.floored = np.any(self.psi < self.var_floor)
-        self.psi = np.clip(self.psi, self.var_floor, None) 
+        self.psi = np.clip(self.psi, self.var_floor, None)
 
     def noise_as_vec(self):
         return self.psi

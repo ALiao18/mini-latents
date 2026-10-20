@@ -49,19 +49,13 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     return Ez, sum_Ezz
 
 
-def m_step_W(
-        X: np.ndarray, 
-        Ez: np.ndarray, 
-        sum_Ezz: np.ndarray, 
-        XtEz: np.ndarray | None = None
-        ) -> np.ndarray:
+def m_step_W(Ez: np.ndarray, sum_Ezz: np.ndarray, XtEz: np.ndarray) -> np.ndarray:
     """
     Closed-form M-step update for W.
     W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1
 
     Params
     ------
-    X       (N,d): centered data matrix
     Ez      (N,k): posterior mean
     sum_Ezz (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
     XtEz    (d,k): X^T Ez = sum_i x_i Ez_i^T, optional; fit() passes it so the noise
@@ -71,81 +65,71 @@ def m_step_W(
     ------
     W_new   (d,k): updated loading matrix
     """
-    if XtEz is None:
-        XtEz = X.T @ Ez  # (d,k), O(Ndk)
     L = np.linalg.cholesky(sum_Ezz)  # (k,k)
     W_new = cholesky_solve(XtEz.T, L).T  # (d,k)
 
     return W_new
 
 
-def log_likelihood(
-        X: np.ndarray, 
-        W: np.ndarray, 
-        psi: np.ndarray, 
-        X2: np.ndarray | None = None
-        ) -> float:
+def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> float:
     """
     Marginal log-likelihood under the model, with z integrated out:
         x ~ N(0, C),   C = W W^T + Psi
+    From the sample covariance alone:
+        sum_n x_n^T C^-1 x_n = N tr(C^-1 S)
 
     With M_inv = I + W^T Psi^-1 W (k,k) instead of (d,d) C:
     1. determinant lemma: log|C| = sum_j log psi_j + log|M_inv|
-    2. Woodbury: C^-1 = Psi^-1 - Psi^-1 W M W^T Psi^-1, so with B = X Psi^-1 W (N,k)
-       sum_n x_n^T C^-1 x_n = sum_n x_n^T Psi^-1 x_n - trace(M B^T B)
+    2. Woodbury: C^-1 = Psi^-1 - Psi^-1 W M W^T Psi^-1, so with B = Psi^-1 W (d,k)
+       tr(C^-1 S) = tr(Psi^-1 S) - tr(M B^T S B)
 
     Parameters
     ----------
-    X: ndarray of shape (N,d)
-        centered data matrix
     W   (d,k): current loading matrix
     psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
-    X2  (d, ): sum_n x_nj^2
+    S   (d,d): sample covariance X^T X / N of the centered data, fixed during EM
+    N        : n_samples
 
     Returns
     ----------
     log_likelihood: float
         marginal log-likelihood of the data under the parameters W, psi over z
     """
+    d = W.shape[0]
+    
     if psi.ndim != 1:
         msg = f"psi must be the (d, ) diagonal, got shape {psi.shape}"
         raise ValueError(msg)
     # C = W W^T + Psi is PD <=> every psi_j > 0; a zero psi_j with
-    # rank(W W^T) < d makes C singular 
+    # rank(W W^T) < d makes C singular
     if np.any(psi <= 0):
         msg = "C = W W^T + Psi is singular: psi must be positive"
         raise np.linalg.LinAlgError(msg)
-    if X2 is None:
-        X2 = np.einsum("ij,ij->j", X, X)  # (d,) sum_n x_nj^2
 
     # setup
-    N, d = X.shape
-    k = W.shape[1] 
+    k = W.shape[1]
     psi_inv = 1 / psi  # (d,)
-    psi_inv_W = psi_inv[:, None] * W # (d,k), O(dk)
-    M_inv =  np.eye(k) + W.T @ psi_inv_W  # (k,k), O(dk^2) SPD
-    L = np.linalg.cholesky(M_inv)        # (k,k) O(k^3)
+    psi_inv_W = psi_inv[:, None] * W  # (d,k), O(dk)
+    M_inv = np.eye(k) + W.T @ psi_inv_W  # (k,k), O(dk^2) SPD
+    L = np.linalg.cholesky(M_inv)  # (k,k) O(k^3)
 
     # term 1    determinant lemma: N log|C| = N (log |Psi| + log|M_inv|)
     # log determinant of diag = sum of log of diagonal entries, O(d)
-    log_Psi = np.log(psi).sum() 
+    log_Psi = np.log(psi).sum()
     # log-determinant from Cholesky factorization
     log_M_inv = logdet_from_cholesky(L)  # log|M_inv|, O(k)
     log_C = log_Psi + log_M_inv
     N_log_C = N * log_C
 
-    # term 2   Woodbury identity: sum_n x_n^T C^-1 x_n = quad_psi - quad_W
-    U = X @ psi_inv_W # (N,k), O(Ndk)
-    # 1. sum (x^T psi_inv x) 
-    quad_psi = psi_inv @ X2 # O(d)
-    # 2. tr(M B^T B) with B = X psi_inv W
-    quad_W = np.trace(cholesky_solve(U.T @ U, L)) # O(Nk^2 + k^3)
-    quad_C_inv = quad_psi - quad_W
+    # term 2   Woodbury identity: sum_n x_n^T C^-1 x_n = N (quad_psi - quad_W)
+    # 1. tr(Psi^-1 S)
+    quad_psi = psi_inv @ np.diagonal(S)  # O(d)
+    # 2. tr(M B^T S B) with B = psi_inv W
+    BtSB = psi_inv_W.T @ S @ psi_inv_W  # (k,k), O(d^2 k)
+    quad_W = np.trace(cholesky_solve(BtSB, L))  # O(k^3)
+    quad_C_inv = N * (quad_psi - quad_W)
 
     # marginal log-likelihood
-    constant = N * d * np.log(2 * np.pi) 
+    constant = N * d * np.log(2 * np.pi)
 
-    return -1/2 * (constant + N_log_C + quad_C_inv) 
-
-
-
+    return -1 / 2 * (constant + N_log_C + quad_C_inv)

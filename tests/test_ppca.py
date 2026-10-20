@@ -116,16 +116,17 @@ def test_ll_monotonicity(ppca_fitted_converged):
 def test_em_improves_on_its_initialization(iso_data):
     X, k = iso_data["X"], iso_data["k"]
     Xc = X - X.mean(axis=0)
+    S, N = Xc.T @ Xc / len(Xc), len(Xc)
 
     model = pPCA(k)
     W0, _ = model._init_W(Xc, k)
     noise = IsotropicNoise()
     noise.initialize(Xc)
     psi = noise.noise_as_vec()
-    ll_start = log_likelihood(Xc, W0, psi)
+    ll_start = log_likelihood(W0, psi, S, N)
 
     model.fit(X, k, **CONVERGED)
-    ll_end = log_likelihood(Xc, model.components_, model.noise_model.noise_as_vec())
+    ll_end = log_likelihood(model.components_, model.noise_model.noise_as_vec(), S, N)
 
     assert ll_end > ll_start
 
@@ -135,8 +136,12 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
 
     model = pPCA(k).fit(X, k, **CONVERGED)
 
+    Xc = X - model.mean_
     recomputed = log_likelihood(
-        X - model.mean_, model.components_, model.noise_model.noise_as_vec()
+        model.components_,
+        model.noise_model.noise_as_vec(),
+        Xc.T @ Xc / len(Xc),
+        len(Xc),
     )
     np.testing.assert_allclose(model.log_likelihood_, recomputed, rtol=1e-9)
 
@@ -167,7 +172,9 @@ def test_em_from_random_start_reaches_the_closed_form(iso_data, monkeypatch, see
     d = X.shape[1]
 
     closed = pPCA(k).fit(X)
-    C_closed = closed.components_ @ closed.components_.T + closed.noise_model.psi * np.eye(d)
+    C_closed = (
+        closed.components_ @ closed.components_.T + closed.noise_model.psi * np.eye(d)
+    )
 
     rng = np.random.default_rng(seed)
     W0 = rng.normal(size=(d, k))
@@ -181,10 +188,16 @@ def test_em_from_random_start_reaches_the_closed_form(iso_data, monkeypatch, see
     assert not model.flags.decreasing_ll
     assert model.n_iter_ > 2
     # the closed form is the global maximum: EM can approach it, not exceed it
-    assert model.log_likelihood_ <= closed.log_likelihood_ + 1e-12 * abs(closed.log_likelihood_)
-    np.testing.assert_allclose(model.log_likelihood_, closed.log_likelihood_, rtol=1e-10)
+    assert model.log_likelihood_ <= closed.log_likelihood_ + 1e-12 * abs(
+        closed.log_likelihood_
+    )
+    np.testing.assert_allclose(
+        model.log_likelihood_, closed.log_likelihood_, rtol=1e-10
+    )
     np.testing.assert_allclose(model.noise_model.psi, closed.noise_model.psi, rtol=1e-6)
-    np.testing.assert_allclose(C_em, C_closed, rtol=0, atol=1e-4 * np.abs(C_closed).max())
+    np.testing.assert_allclose(
+        C_em, C_closed, rtol=0, atol=1e-4 * np.abs(C_closed).max()
+    )
 
 
 # --- recovery and limits ---------------------------------------------------

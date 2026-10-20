@@ -20,6 +20,11 @@ def em_state():
     return X, W, Ez, Ezz
 
 
+def _m_step(noise, X, W, Ez, Ezz):
+    """m_step takes sufficient statistics; build them from X the way fit() does."""
+    noise.m_step(W, Ezz, N=X.shape[0], X2=np.sum(X**2, axis=0), XtEz=X.T @ Ez)
+
+
 # --- initialize / as_matrix ------------------------------------------------
 
 
@@ -81,11 +86,11 @@ def test_isotropic_m_step_is_the_mean_of_the_anisotropic_m_step(em_state):
 
     iso = IsotropicNoise()
     iso.initialize(X)
-    iso.m_step(X, W, Ez, Ezz)
+    _m_step(iso, X, W, Ez, Ezz)
 
     aniso = AnisotropicNoise()
     aniso.initialize(X)
-    aniso.m_step(X, W, Ez, Ezz)
+    _m_step(aniso, X, W, Ez, Ezz)
 
     np.testing.assert_allclose(iso.psi, aniso.psi.mean(), rtol=1e-10)
 
@@ -97,7 +102,7 @@ def test_anisotropic_m_step_matches_naive_loop(em_state):
 
     aniso = AnisotropicNoise()
     aniso.initialize(X)
-    aniso.m_step(X, W, Ez, Ezz)
+    _m_step(aniso, X, W, Ez, Ezz)
 
     # e_step returns only the sum over samples; rebuild the shared posterior
     # covariance M from it so each E[z_i z_i^T] = M + Ez_i Ez_i^T is explicit.
@@ -120,7 +125,7 @@ def test_isotropic_m_step_matches_naive_loop(em_state):
 
     iso = IsotropicNoise()
     iso.initialize(X)
-    iso.m_step(X, W, Ez, Ezz)
+    _m_step(iso, X, W, Ez, Ezz)
 
     M = (Ezz - Ez.T @ Ez) / N  # shared posterior covariance, see anisotropic test
 
@@ -141,34 +146,6 @@ def test_m_step_keeps_variances_positive(cls, em_state):
 
     noise = cls()
     noise.initialize(X)
-    noise.m_step(X, W, Ez, Ezz)
+    _m_step(noise, X, W, Ez, Ezz)
 
     assert np.all(noise.psi > 0)
-
-
-@pytest.mark.parametrize("cls", [IsotropicNoise, AnisotropicNoise])
-def test_m_step_with_precomputed_X2_matches_without(cls, em_state):
-    """fit() passes X2 = sum_n x_n^2 to skip a pass over X; the update must not change."""
-    X, W, Ez, Ezz = em_state
-
-    with_X2, without = cls(), cls()
-    with_X2.initialize(X)
-    without.initialize(X)
-    with_X2.m_step(X, W, Ez, Ezz, X2=np.sum(X**2, axis=0))
-    without.m_step(X, W, Ez, Ezz)
-
-    np.testing.assert_allclose(with_X2.psi, without.psi)
-
-
-@pytest.mark.parametrize("cls", [IsotropicNoise, AnisotropicNoise])
-def test_m_step_with_precomputed_XtEz_matches_without(cls, em_state):
-    """fit() shares m_step_W's X^T Ez with the noise M-step; the update must not change."""
-    X, W, Ez, Ezz = em_state
-
-    with_XtEz, without = cls(), cls()
-    with_XtEz.initialize(X)
-    without.initialize(X)
-    with_XtEz.m_step(X, W, Ez, Ezz, XtEz=X.T @ Ez)
-    without.m_step(X, W, Ez, Ezz)
-
-    np.testing.assert_allclose(with_XtEz.psi, without.psi)

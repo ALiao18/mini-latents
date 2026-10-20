@@ -5,7 +5,6 @@ from .em_core import e_step, log_likelihood, m_step_W
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
-
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
 
@@ -14,7 +13,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Infer latent variables for X using current model parameters
 
         Returns
-        ------
+        -------
         Ez (N,k): posterior mean of latent variables
         """
         Xc = X - self.mean_
@@ -23,14 +22,14 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
     def fit(
         self,
-        X,
-        n_components=None,
-        max_iter=5000,
-        tol=1e-8,
+        X: np.ndarray,
+        n_components: int = None,
+        max_iter: int = 5000,
+        tol: float =1e-8,
     ):
         """
         Fit the model using the EM algorithm.
-        1. center the data to mu = 0
+        1. center the data
         2. initialize W using self._init_W(Xc)
 
         Stopping criterion:
@@ -39,21 +38,34 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         params
         ------
-        - X           : (N, d) data matrix
-        - n_components: defaults to value given to __init__, pasing here overrides and updates self.n_components
-        - tol         : per-sample log-likelihood gain. Stopping criteria for EM
+        - X: (N, d) np.ndarray
+            data matrix
+        - n_components: int,
+            denoted as k, defaults to value passed to __init__, passing here overrides and updates self.n_components
+        - tol: float
+            per-sample log-likelihood gain. Stopping criteria for EM
         """
+        X = np.asarray(X, dtype=np.float64)
         if n_components is None:
             n_components = self.n_components
-
         self.n_components = n_components
+
+        N, d = X.shape
+        k = self.n_components
+
+        if not 0 < k <= d:
+            msg = f"n_components must be in [1, {d}], got {k}"
+            raise ValueError(msg)
+
         self.flags = FitFlags()
 
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
-        X2 = np.einsum("ij,ij->j", Xc, Xc)  # (d,) sum_n x_nj^2, fixed during EM: computed once
-        # N, _ = Xc.shape
+        X2 = np.einsum(
+            "ij,ij->j", Xc, Xc
+        )  # (d,) sum_n x_nj^2, fixed during EM: computed once
+        S = Xc.T @ Xc / N  # (d,d) sample covariance, fixed during EM: computed once
 
         # initialize loading matrix with closed-form PCA solution.
         W, sigma2 = self._init_W(Xc, n_components)  # (d, k), scalar
@@ -66,15 +78,18 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         for i in range(max_iter):
             psi = self.noise_model.noise_as_vec()  # (d,)
-            Ez, Ezz = e_step(Xc, W, psi)
+            Ez, sum_Ezz = e_step(Xc, W, psi)
             XtEz = Xc.T @ Ez  # (d,k), O(Ndk): shared by both M-steps
 
-            W = m_step_W(Xc, Ez, Ezz, XtEz=XtEz)
-            self.noise_model.m_step(Xc, W, Ez, Ezz, X2=X2, XtEz=XtEz)  # psi update uses the new W
-            if self.noise_model.floored:
-                self.flags.heywood = True
+            W = m_step_W(Ez, sum_Ezz, XtEz=XtEz)
+            self.noise_model.m_step(
+                W, sum_Ezz, N=N, X2=X2, XtEz=XtEz
+            )  # psi update uses the new W
+            if isinstance(self.noise_model, AnisotropicNoise):
+                if self.noise_model.floored:
+                    self.flags.heywood = True
 
-            ll_curr = log_likelihood(Xc, W, self.noise_model.noise_as_vec(), X2=X2)
+            ll_curr = log_likelihood(W, self.noise_model.noise_as_vec(), S, N)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
@@ -89,7 +104,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
                     break  # stop EM
             ll_old = ll_curr
 
-        self.components_ = fix_signs(W)  # EM is sign-equivariant: flipping a column of W leaves C unchanged
+        self.components_ = fix_signs(
+            W
+        )  # EM is sign-equivariant: flipping a column of W leaves C unchanged
         self.n_iter_ = len(self.ll_history_)
         self.log_likelihood_ = ll_curr
         return self
@@ -108,11 +125,11 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         params:
         - Xc (N, d): X, mean centered
-        - n_componenets: n principal components to retain
+        - n_components: n principal components to retain
 
         returns:
         - W      (d,k): weight matrix initialization
-        - sigma2 (scalar): isotropic noise variance initialiation
+        - sigma2 (scalar): isotropic noise variance initialization
         """
         N, d = Xc.shape
 
@@ -139,10 +156,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Used by pPCA, where (W, sigma2) is the exact ML solution. FA overrides this.
         """
         if sigma2 <= 0:
-            raise ValueError(
-                "need n_components < x_dim: sigma^2_ML is the mean "
-                "of the discarded eigenvalues, and there are none"
-            )
+            msg = f"need n_components < d: sigma^2_ML is the mean of the discarded eigenvalues, and there are none"
+            raise ValueError(msg)
 
         self.noise_model.initialize(Xc, psi=sigma2)
 
@@ -154,11 +169,19 @@ class pPCA(ProbabilisticLinearLatentModels):
         self.method = "closed_form"
         self.random_seed = None
 
-    def fit(self, X, n_components=None, max_iter=5000, tol=1e-8, method="closed_form", random_seed=None):
+    def fit(
+        self,
+        X,
+        n_components=None,
+        max_iter=5000,
+        tol=1e-8,
+        method="closed_form",
+        random_seed=None,
+    ):
         """
         method = "closed_form": ML solution (eigh of the covariance), no EM (default)
         method = "em"         : EM from a random start, W ~ N(0, 1) and sigma^2 = mean feature
-                                variance. 
+                                variance.
         """
 
         if method not in ("em", "closed_form"):
@@ -172,8 +195,9 @@ class pPCA(ProbabilisticLinearLatentModels):
 
         if method == "closed_form":
             Xc = X - self.mean_
+            N = Xc.shape[0]
             self.log_likelihood_ = log_likelihood(
-                Xc, self.components_, self.noise_model.noise_as_vec()
+                self.components_, self.noise_model.noise_as_vec(), Xc.T @ Xc / N, N
             )
             self.flags.converged = True
 
@@ -182,7 +206,9 @@ class pPCA(ProbabilisticLinearLatentModels):
     def _init_W(self, Xc, n_components):
         """closed_form: the ML solution. em: random W, sigma^2 = mean feature variance."""
         if self.method == "em":
-            W = np.random.default_rng(self.random_seed).normal(size=(Xc.shape[1], n_components))  # (d, k)
+            W = np.random.default_rng(self.random_seed).normal(
+                size=(Xc.shape[1], n_components)
+            )  # (d, k)
             return W, Xc.var(axis=0).mean()
         return super()._init_W(Xc, n_components)
 

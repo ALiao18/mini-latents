@@ -52,7 +52,7 @@ def test_log_likelihood_raises_on_singular_covariance():
     W = rng.normal(size=(5, 2))  # W W^T has rank 2, and Psi = 0
 
     with pytest.raises(np.linalg.LinAlgError):
-        log_likelihood(X, W, np.zeros(5))
+        log_likelihood(W, np.zeros(5), X.T @ X / len(X), len(X))
 
 
 # --- e_step ----------------------------------------------------------------
@@ -141,24 +141,16 @@ def test_m_step_W_solves_normal_equations(wpsi):
     X, W, Psi = wpsi
     Ez, Ezz = e_step(X, W, Psi)
 
-    W_new = m_step_W(X, Ez, Ezz)
+    W_new = m_step_W(Ez, Ezz, X.T @ Ez)
 
     np.testing.assert_allclose(W_new @ Ezz, X.T @ Ez, rtol=1e-7, atol=1e-9)
-
-
-def test_m_step_W_with_precomputed_XtEz_matches_without(wpsi):
-    """fit() computes X^T Ez once and shares it with the noise M-step; W_new must not change."""
-    X, W, Psi = wpsi
-    Ez, Ezz = e_step(X, W, Psi)
-
-    np.testing.assert_allclose(m_step_W(X, Ez, Ezz, XtEz=X.T @ Ez), m_step_W(X, Ez, Ezz))
 
 
 def test_m_step_W_shape(wpsi):
     X, W, Psi = wpsi
     Ez, Ezz = e_step(X, W, Psi)
 
-    assert m_step_W(X, Ez, Ezz).shape == W.shape
+    assert m_step_W(Ez, Ezz, X.T @ Ez).shape == W.shape
 
 
 def test_m_step_W_recovers_exact_loading_in_noiseless_limit():
@@ -171,7 +163,9 @@ def test_m_step_W_recovers_exact_loading_in_noiseless_limit():
     Ez = Z
     Ezz = Z.T @ Z  # sum_n z_n z_n^T
 
-    np.testing.assert_allclose(m_step_W(X, Ez, Ezz), W_true, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(
+        m_step_W(Ez, Ezz, X.T @ Ez), W_true, rtol=1e-8, atol=1e-10
+    )
 
 
 # --- log_likelihood --------------------------------------------------------
@@ -181,19 +175,10 @@ def test_log_likelihood_matches_scipy(wpsi):
     X, W, psi = wpsi
     C = W @ W.T + np.diag(psi)
 
-    ll = log_likelihood(X, W, psi)
+    ll = log_likelihood(W, psi, X.T @ X / len(X), len(X))
 
     expected = multivariate_normal(mean=np.zeros(len(C)), cov=C).logpdf(X).sum()
     np.testing.assert_allclose(ll, expected, rtol=1e-9)
-
-
-def test_log_likelihood_with_precomputed_X2_matches_without(wpsi):
-    """fit() passes X2 = sum_n x_n^2 to skip a pass over X; the answer must not change."""
-    X, W, psi = wpsi
-
-    np.testing.assert_allclose(
-        log_likelihood(X, W, psi, X2=np.sum(X**2, axis=0)), log_likelihood(X, W, psi)
-    )
 
 
 def test_log_likelihood_prefers_the_true_covariance():
@@ -203,8 +188,9 @@ def test_log_likelihood_prefers_the_true_covariance():
     X = rng.normal(size=(400, 2)) @ W_true.T + 0.3 * rng.normal(size=(400, 6))
     X = X - X.mean(axis=0)
     psi = np.full(6, 0.09)
+    S, N = X.T @ X / len(X), len(X)
 
-    ll_true = log_likelihood(X, W_true, psi)
-    ll_wrong = log_likelihood(X, rng.normal(size=(6, 2)), psi)
+    ll_true = log_likelihood(W_true, psi, S, N)
+    ll_wrong = log_likelihood(rng.normal(size=(6, 2)), psi, S, N)
 
     assert ll_true > ll_wrong

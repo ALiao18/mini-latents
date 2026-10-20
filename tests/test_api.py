@@ -139,4 +139,3 @@ def test_stopping_rule_is_invariant_to_tiling(iso_data):
     }
 
     assert max(counts.values()) - min(counts.values()) <= 1, counts
-
