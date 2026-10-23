@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 
-from .base import LinearLatentModels, fix_signs
+from .base import LinearLatentModels, fix_signs, top_k_eig
 
 
 class PCA(LinearLatentModels):
@@ -51,22 +51,15 @@ class PCA(LinearLatentModels):
             If 'n_components' is not in [1, d]
         """
         X = np.asarray(X, dtype=np.float64)
-        N, d = X.shape
-        k = self.n_components
-        if not 0 < k <= d:
+        N, d, k = X.shape, self.n_components
+        if not 0 < k <= min(N, d):
             msg = f"n_components must be in [1, {d}], got {k}"
             raise ValueError(msg)
 
         # center the data
         self.mean_ = X.mean(axis=0)
         Xc = X - self.mean_  # (N, d)
-        cov = Xc.T @ Xc / N  # (d, d) O(Nd^2)
-        total_var = np.trace(cov) 
-
-        eigvals, eigvecs = sp.linalg.eigh(
-            cov, subset_by_index=[d - k, d - 1]
-        )  # ascending order
-        eigvals, eigvecs = eigvals[::-1], eigvecs[:, ::-1]
+        eigvals, eigvecs, total_var = top_k_eig(Xc, k)
 
         self.explained_variance_ = eigvals
         self.components_ = fix_signs(eigvecs)

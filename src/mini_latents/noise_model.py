@@ -7,23 +7,22 @@ class NoiseModel(ABC):
     @abstractmethod
     def m_step(
         self, 
-        X: np.ndarray, 
-        W, Ez: np.ndarray, 
-        Ezz: np.ndarray, 
-        X2=None, 
-        XtEz=None
+        W: np.ndarray, 
+        sum_Ezz: np.ndarray, 
+        N: int,
+        X2: np.ndarray,
+        XtEz: np.ndarray
     ):
         """
         m-step of the EM algorithm
 
         Params:
         -------
-        X       (n,d): data matrix
         W       (d,k): weight matrix
-        Ez      (n,k): expected mean of posterior distribution of latent variables
         sum_Ezz (k,k): sum over n posterior second moment of latent variables
-        X2      (d,  ): sum_n x_nj^2, optional; computed from X if None
-        XtEz    (d,k): X^T Ez, optional; computed from X, Ez if None
+        N            : sample count, int
+        X2      (d, ): sum_n x_nj^2
+        XtEz    (d,k): X^T Ez
         """
 
     @abstractmethod
@@ -52,7 +51,6 @@ class IsotropicNoise(NoiseModel):
     def __init__(self):
         self.d = None
         self.psi = None
-        self.var_floor = None
 
     def initialize(self, X, psi=None) -> None:
         self.d = X.shape[1]
@@ -93,18 +91,19 @@ class IsotropicNoise(NoiseModel):
 
 
 class AnisotropicNoise(NoiseModel):
-    def __init__(self):
+    def __init__(self, min_var_frac: float = 0.01):
+        self.min_var_frac = min_var_frac
         self.d = None
         self.psi = None
         self.var_floor = None
         self.floored = None
 
-    def initialize(self, X, psi=None, min_var_frac=0.01) -> None:
+    def initialize(self, X, psi=None) -> None:
         self.d = X.shape[1]
         self.psi = (
             np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)
         )  # scalar or (d,) -> (d,)
-        self.var_floor = min_var_frac * np.var(X, axis=0)  # (d,), O(Nd)
+        self.var_floor = self.min_var_frac * np.var(X, axis=0)  # (d,), O(Nd)
 
     def m_step(
         self,
