@@ -6,12 +6,12 @@ import numpy as np
 class NoiseModel(ABC):
     @abstractmethod
     def m_step(
-        self, 
-        W: np.ndarray, 
-        sum_Ezz: np.ndarray, 
+        self,
+        W: np.ndarray,
+        sum_Ezz: np.ndarray,
         N: int,
         X2: np.ndarray,
-        XtEz: np.ndarray
+        XtEz: np.ndarray,
     ):
         """
         m-step of the EM algorithm

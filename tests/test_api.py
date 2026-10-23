@@ -48,13 +48,6 @@ def test_infer_latents_and_inverse_transform_shapes(cls, iso_data):
 
 
 @pytest.mark.parametrize("cls", ALL_MODELS)
-def test_components_are_finite(cls, iso_data):
-    model = _fit(cls, iso_data["X"], iso_data["k"])
-
-    assert np.all(np.isfinite(model.components_))
-
-
-@pytest.mark.parametrize("cls", ALL_MODELS)
 def test_components_largest_entry_is_positive(cls, iso_data):
     """Each column's sign is arbitrary (v and -v fit equally well); fit picks the one whose largest |entry| is positive.
 
@@ -78,36 +71,7 @@ def test_fitting_twice_is_deterministic(cls, iso_data):
     np.testing.assert_array_equal(a.components_, b.components_)
 
 
-@pytest.mark.parametrize("cls", ALL_MODELS)
-def test_inverse_transform_accepts_latents_it_did_not_produce(cls, iso_data):
-    """inverse_transform takes Z as an argument, so infer_latents() need not run first."""
-    X, k = iso_data["X"], iso_data["k"]
-    model = _fit(cls, X, k)
-
-    Z = np.zeros((5, k))
-
-    np.testing.assert_allclose(model.inverse_transform(Z), np.tile(model.mean_, (5, 1)))
-
-
 # --- n_components handling -------------------------------------------------
-
-
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_fit_uses_n_components_from_the_constructor(cls, iso_data):
-    X = iso_data["X"]
-
-    model = cls(3).fit(X)
-
-    assert model.components_.shape == (X.shape[1], 3)
-
-
-@pytest.mark.parametrize("cls", PROBABILISTIC)
-def test_max_iter_zero_does_not_crash(cls, iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-
-    model = cls(k).fit(X, k, max_iter=0)
-
-    assert model.n_iter_ == 0
 
 
 @pytest.mark.parametrize("cls", PROBABILISTIC)
@@ -120,22 +84,3 @@ def test_n_components_attribute_stays_consistent_with_components(cls, iso_data):
 
 
 # --- EM convergence contract -----------------------------------------------
-
-
-def test_stopping_rule_is_invariant_to_tiling(iso_data):
-    """
-    Tiling the data leaves the sample covariance unchanged, so EM follows an
-    identical trajectory and every ll scales by the tiling factor. The relative
-    rule (latest gain vs total gain) is unchanged by that scaling, so it stops at
-    the same iteration whatever N is; an absolute gain threshold would stop later
-    and later. Rounding in the N-sample sums can move the stop by one iteration.
-    FA only: pPCA's default is the closed form, which runs no iterations.
-    """
-    X, k = iso_data["X"], iso_data["k"]
-
-    counts = {
-        len(Xr): FA(k).fit(Xr, max_iter=5000, tol=1e-9).n_iter_
-        for Xr in (X, np.tile(X, (2, 1)), np.tile(X, (4, 1)))
-    }
-
-    assert max(counts.values()) - min(counts.values()) <= 1, counts

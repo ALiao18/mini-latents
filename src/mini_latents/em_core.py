@@ -96,7 +96,7 @@ def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> flo
         marginal log-likelihood of the data under the parameters W, psi over z
     """
     d = W.shape[0]
-    
+
     if psi.ndim != 1:
         msg = f"psi must be the (d, ) diagonal, got shape {psi.shape}"
         raise ValueError(msg)

@@ -1,5 +1,4 @@
 import numpy as np
-import scipy as sp
 
 from .base import LinearLatentModels, fix_signs, top_k_eig
 
@@ -51,7 +50,8 @@ class PCA(LinearLatentModels):
             If 'n_components' is not in [1, d]
         """
         X = np.asarray(X, dtype=np.float64)
-        N, d, k = X.shape, self.n_components
+        N, d = X.shape
+        k = self.n_components
         if not 0 < k <= min(N, d):
             msg = f"n_components must be in [1, {d}], got {k}"
             raise ValueError(msg)

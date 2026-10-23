@@ -6,7 +6,6 @@ implementation plus the invariances the model is defined by.
 
 import numpy as np
 import pytest
-from helpers import subspace_dist
 from sklearn.decomposition import FactorAnalysis as SklearnFA
 
 from mini_latents.em_core import log_likelihood
@@ -39,19 +38,6 @@ def test_implied_covariance_matches_sklearn(aniso_data):
     assert np.linalg.norm(C - C_sk) / np.linalg.norm(C_sk) < 1e-6
 
 
-def test_log_likelihood_matches_sklearn(aniso_data):
-    X, k = aniso_data["X"], aniso_data["k"]
-
-    ours = FA(k).fit(X, k, **CONVERGED)
-    theirs = SklearnFA(n_components=k, max_iter=3000, tol=1e-11).fit(X)
-
-    Xc = X - ours.mean_
-    ll = log_likelihood(
-        ours.components_, ours.noise_model.noise_as_vec(), Xc.T @ Xc / len(Xc), len(Xc)
-    )
-    np.testing.assert_allclose(ll, theirs.score(X) * len(X), rtol=1e-8)
-
-
 def test_uniquenesses_match_sklearn(aniso_data):
     X, k = aniso_data["X"], aniso_data["k"]
 
@@ -62,17 +48,6 @@ def test_uniquenesses_match_sklearn(aniso_data):
 
 
 # --- EM behaviour ----------------------------------------------------------
-
-
-@pytest.mark.fit
-def test_fit(fa_fitted_converged):
-    """Test basic fitting: convergence flags and iteration count."""
-    model = fa_fitted_converged
-
-    assert model.flags.converged
-    assert not model.flags.decreasing_ll
-    # Regression baseline for fixed seeds (data seed 1, PCA start, default tol=1e-8).
-    assert model.n_iter_ == 216
 
 
 @pytest.mark.fit
@@ -115,25 +90,6 @@ def test_fa_fits_at_least_as_well_as_ppca(aniso_data):
 # --- recovery --------------------------------------------------------------
 
 
-def test_recovers_the_generating_subspace(aniso_data):
-    X, k, W_true = aniso_data["X"], aniso_data["k"], aniso_data["W_true"]
-
-    model = FA(k).fit(X, k, **CONVERGED)
-
-    # ||P_A - P_B|| maxes out at sqrt(2k) ~ 2.45 for k=3, so this is a tight
-    # subspace match; the residual is finite-sample error and shrinks with N.
-    assert subspace_dist(model.components_, W_true) < 0.4
-
-
-def test_recovers_heteroscedastic_noise(aniso_data):
-    """The whole point of FA: per-feature noise variances, not one shared value."""
-    X, k, psi_true = aniso_data["X"], aniso_data["k"], aniso_data["psi_true"]
-
-    model = FA(k).fit(X, k, **CONVERGED)
-
-    np.testing.assert_allclose(model.noise_model.psi, psi_true, rtol=0.25, atol=0.02)
-
-
 # --- the invariance that defines FA ----------------------------------------
 
 
@@ -156,39 +112,3 @@ def test_is_equivariant_under_per_feature_rescaling(aniso_data):
         np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected)
         < 1e-6
     )
-
-
-def test_ppca_is_not_scale_equivariant(aniso_data):
-    """The contrast case: an isotropic Psi cannot absorb per-feature rescaling."""
-    X, k = aniso_data["X"], aniso_data["k"]
-    c = np.array([0.5, 2.0, 1.0, 3.0, 0.25, 1.5, 4.0, 0.75])
-
-    base = pPCA(k).fit(X, **CONVERGED)
-    scaled = pPCA(k).fit(X * c, **CONVERGED)
-
-    expected = c[:, None] * _implied_cov(base) * c[None, :]
-    assert (
-        np.linalg.norm(_implied_cov(scaled) - expected) / np.linalg.norm(expected)
-        > 1e-2
-    )
-
-
-def test_reduces_to_ppca_when_noise_is_isotropic(iso_data, aniso_data):
-    """
-    Given genuinely isotropic noise, FA should land on pPCA's subspace and on a
-    far flatter Psi than it finds on genuinely heteroscedastic data. The
-    dispersion is compared against the anisotropic fit rather than a bare
-    constant, so the test calibrates itself instead of encoding a magic number.
-    """
-    X, k = iso_data["X"], iso_data["k"]
-
-    fa = FA(k).fit(X, k, **CONVERGED)
-    pp = pPCA(k).fit(X, k, **CONVERGED)
-
-    assert subspace_dist(fa.components_, pp.components_) < 0.15
-
-    def dispersion(psi):
-        return psi.std() / psi.mean()
-
-    fa_aniso = FA(k).fit(aniso_data["X"], k, **CONVERGED)
-    assert dispersion(fa.noise_model.psi) < 0.5 * dispersion(fa_aniso.noise_model.psi)

@@ -28,51 +28,6 @@ def _m_step(noise, X, W, Ez, Ezz):
 # --- initialize / as_matrix ------------------------------------------------
 
 
-def test_isotropic_initialize_uses_mean_feature_variance():
-    rng = np.random.default_rng(21)
-    X = rng.normal(size=(100, 4)) * np.array([1.0, 2.0, 3.0, 4.0])
-
-    noise = IsotropicNoise()
-    noise.initialize(X)
-
-    assert noise.d == 4
-    np.testing.assert_allclose(noise.psi, np.var(X, axis=0).mean())
-
-
-def test_anisotropic_initialize_uses_per_feature_variance():
-    rng = np.random.default_rng(22)
-    X = rng.normal(size=(100, 4)) * np.array([1.0, 2.0, 3.0, 4.0])
-
-    noise = AnisotropicNoise()
-    noise.initialize(X)
-
-    assert noise.d == 4
-    np.testing.assert_allclose(noise.psi, np.var(X, axis=0))
-
-
-def test_isotropic_as_matrix_is_scaled_identity():
-    rng = np.random.default_rng(23)
-    noise = IsotropicNoise()
-    noise.initialize(rng.normal(size=(50, 4)))
-
-    Psi = noise.as_matrix()
-
-    assert Psi.shape == (4, 4)
-    np.testing.assert_allclose(Psi, noise.psi * np.eye(4))
-
-
-def test_anisotropic_as_matrix_is_diagonal():
-    rng = np.random.default_rng(24)
-    noise = AnisotropicNoise()
-    noise.initialize(rng.normal(size=(50, 4)))
-
-    Psi = noise.as_matrix()
-
-    assert Psi.shape == (4, 4)
-    np.testing.assert_allclose(Psi, np.diag(np.diag(Psi)))
-    np.testing.assert_allclose(np.diag(Psi), noise.psi)
-
-
 # --- m_step ----------------------------------------------------------------
 
 

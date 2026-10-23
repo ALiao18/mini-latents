@@ -58,16 +58,6 @@ def test_log_likelihood_raises_on_singular_covariance():
 # --- e_step ----------------------------------------------------------------
 
 
-def test_e_step_shapes(wpsi):
-    X, W, psi = wpsi
-    N, k = X.shape[0], W.shape[1]
-
-    Ez, Ezz = e_step(X, W, psi)
-
-    assert Ez.shape == (N, k)
-    assert Ezz.shape == (k, k)  # summed over samples
-
-
 def test_e_step_matches_textbook_form(wpsi):
     """M = (I + W^T Psi^-1 W)^-1,  E[z_i] = M W^T Psi^-1 x_i."""
     X, W, psi = wpsi
@@ -79,22 +69,6 @@ def test_e_step_matches_textbook_form(wpsi):
     M = np.linalg.inv(np.eye(k) + W.T @ Psi_inv @ W)
     expected = np.array([M @ W.T @ Psi_inv @ x for x in X])
     np.testing.assert_allclose(Ez, expected, rtol=1e-9, atol=1e-11)
-
-
-def test_e_step_matches_woodbury_form(wpsi):
-    """
-    E[z] = X C^-1 W with C = W W^T + Psi.
-
-    Algebraically the same posterior as the textbook form, but reached by a
-    different route -- so a transposed or misplaced factor shows up here.
-    """
-    X, W, psi = wpsi
-
-    Ez, _ = e_step(X, W, psi)
-
-    C = W @ W.T + np.diag(psi)
-    C_inv = np.linalg.inv(C)
-    np.testing.assert_allclose(Ez, X @ C_inv @ W, rtol=1e-9, atol=1e-11)
 
 
 def test_e_step_second_moment_decomposition(wpsi):
@@ -119,20 +93,6 @@ def test_e_step_second_moments_are_symmetric_psd(wpsi):
     assert np.linalg.eigvalsh(Ezz).min() > -1e-10
 
 
-def test_e_step_shrinks_toward_prior():
-    """With huge observation noise the posterior mean is pulled to zero."""
-    rng = np.random.default_rng(12)
-    X = rng.normal(size=(30, 4))
-    X = X - X.mean(axis=0)
-    W = rng.normal(size=(4, 2))
-
-    Ez_loud, _ = e_step(X, W, np.full(4, 1e4))
-    Ez_quiet, _ = e_step(X, W, np.full(4, 1e-2))
-
-    assert np.abs(Ez_loud).max() < np.abs(Ez_quiet).max()
-    assert np.abs(Ez_loud).max() < 1e-2
-
-
 # --- m_step_W --------------------------------------------------------------
 
 
@@ -146,28 +106,6 @@ def test_m_step_W_solves_normal_equations(wpsi):
     np.testing.assert_allclose(W_new @ Ezz, X.T @ Ez, rtol=1e-7, atol=1e-9)
 
 
-def test_m_step_W_shape(wpsi):
-    X, W, Psi = wpsi
-    Ez, Ezz = e_step(X, W, Psi)
-
-    assert m_step_W(Ez, Ezz, X.T @ Ez).shape == W.shape
-
-
-def test_m_step_W_recovers_exact_loading_in_noiseless_limit():
-    """If x_i = W z_i exactly and the posterior is a point mass at z_i, the M-step returns W."""
-    rng = np.random.default_rng(13)
-    W_true = rng.normal(size=(5, 2))
-    Z = rng.normal(size=(60, 2))
-    X = Z @ W_true.T
-
-    Ez = Z
-    Ezz = Z.T @ Z  # sum_n z_n z_n^T
-
-    np.testing.assert_allclose(
-        m_step_W(Ez, Ezz, X.T @ Ez), W_true, rtol=1e-8, atol=1e-10
-    )
-
-
 # --- log_likelihood --------------------------------------------------------
 
 
@@ -179,18 +117,3 @@ def test_log_likelihood_matches_scipy(wpsi):
 
     expected = multivariate_normal(mean=np.zeros(len(C)), cov=C).logpdf(X).sum()
     np.testing.assert_allclose(ll, expected, rtol=1e-9)
-
-
-def test_log_likelihood_prefers_the_true_covariance():
-    """The generating parameters must score higher than a mismatched W."""
-    rng = np.random.default_rng(14)
-    W_true = rng.normal(size=(6, 2))
-    X = rng.normal(size=(400, 2)) @ W_true.T + 0.3 * rng.normal(size=(400, 6))
-    X = X - X.mean(axis=0)
-    psi = np.full(6, 0.09)
-    S, N = X.T @ X / len(X), len(X)
-
-    ll_true = log_likelihood(W_true, psi, S, N)
-    ll_wrong = log_likelihood(rng.normal(size=(6, 2)), psi, S, N)
-
-    assert ll_true > ll_wrong

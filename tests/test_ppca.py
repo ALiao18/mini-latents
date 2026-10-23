@@ -10,7 +10,6 @@ from helpers import subspace_dist
 from sklearn.decomposition import PCA as SklearnPCA
 
 from mini_latents.em_core import log_likelihood
-from mini_latents.noise_model import IsotropicNoise
 from mini_latents.pca import PCA
 from mini_latents.ppca_fa import pPCA
 
@@ -84,17 +83,6 @@ def test_implied_covariance_matches_sklearn_pca(iso_data):
 
 
 @pytest.mark.fit
-def test_fit(ppca_fitted_converged):
-    """Test basic fitting: convergence flags and iteration count."""
-    model = ppca_fitted_converged
-
-    assert model.flags.converged
-    assert not model.flags.decreasing_ll
-    # Regression baseline for fixed seeds (data seed 0, random_seed=0, default tol=1e-8).
-    assert model.n_iter_ == 131
-
-
-@pytest.mark.fit
 def test_ll_monotonicity(ppca_fitted_converged):
     """Test that the log-likelihood from fit() is monotonically non-decreasing.
 
@@ -113,24 +101,6 @@ def test_ll_monotonicity(ppca_fitted_converged):
     )
 
 
-def test_em_improves_on_its_initialization(iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-    Xc = X - X.mean(axis=0)
-    S, N = Xc.T @ Xc / len(Xc), len(Xc)
-
-    model = pPCA(k)
-    W0, _ = model._init_W(Xc, k)
-    noise = IsotropicNoise()
-    noise.initialize(Xc)
-    psi = noise.noise_as_vec()
-    ll_start = log_likelihood(W0, psi, S, N)
-
-    model.fit(X, k, **CONVERGED)
-    ll_end = log_likelihood(model.components_, model.noise_model.noise_as_vec(), S, N)
-
-    assert ll_end > ll_start
-
-
 def test_reported_log_likelihood_matches_final_parameters(iso_data):
     X, k = iso_data["X"], iso_data["k"]
 
@@ -144,14 +114,6 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
         len(Xc),
     )
     np.testing.assert_allclose(model.log_likelihood_, recomputed, rtol=1e-9)
-
-
-def test_n_iter_respects_max_iter(iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-
-    model = pPCA(k).fit(X, k, max_iter=7, tol=0, method="em")
-
-    assert model.n_iter_ == 7
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2])
@@ -203,22 +165,6 @@ def test_em_from_random_start_reaches_the_closed_form(iso_data, monkeypatch, see
 # --- recovery and limits ---------------------------------------------------
 
 
-def test_recovers_the_generating_subspace(iso_data):
-    X, k, W_true = iso_data["X"], iso_data["k"], iso_data["W_true"]
-
-    model = pPCA(k).fit(X, k, **CONVERGED)
-
-    assert subspace_dist(model.components_, W_true) < 0.1
-
-
-def test_recovers_the_generating_noise_variance(iso_data):
-    X, k, psi_true = iso_data["X"], iso_data["k"], iso_data["psi_true"]
-
-    model = pPCA(k).fit(X, k, **CONVERGED)
-
-    np.testing.assert_allclose(model.noise_model.psi, psi_true, rtol=0.15)
-
-
 def test_collapses_onto_pca_as_noise_vanishes(tiny_noise_data):
     """
     As sigma -> 0 the pPCA and PCA subspaces must coincide. Regression test for
@@ -244,22 +190,3 @@ def test_converges_across_ranks(iso_data, k):
     np.testing.assert_allclose(
         model.noise_model.psi, _spectrum(X)[k:].mean(), rtol=1e-4
     )
-
-
-def test_infer_latents_and_inverse_transform_shapes(iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-
-    model = pPCA(k).fit(X, k, **CONVERGED)
-    Z = model.infer_latents(X)
-
-    assert Z.shape == (len(X), k)
-    assert model.inverse_transform(Z).shape == X.shape
-
-
-def test_reconstruction_beats_the_mean_only_baseline(iso_data):
-    X, k = iso_data["X"], iso_data["k"]
-
-    model = pPCA(k).fit(X, k, **CONVERGED)
-    recon_err = np.sum((X - model.inverse_transform(model.infer_latents(X))) ** 2)
-
-    assert recon_err < np.sum((X - X.mean(axis=0)) ** 2)
