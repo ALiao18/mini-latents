@@ -53,7 +53,7 @@ class PCA(LinearLatentModels):
         N, d = X.shape
         k = self.n_components
         if not 0 < k <= min(N, d):
-            msg = f"n_components must be in [1, {d}], got {k}"
+            msg = f"n_components must be < min({N - 1}, {d}), got {k}"
             raise ValueError(msg)
 
         # center the data

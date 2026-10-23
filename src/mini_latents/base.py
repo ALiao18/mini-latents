@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
-from .tracking import FitFlags
-from scipy.sparse.linalg import svds
-import scipy as sp
+
 import numpy as np
+import scipy as sp
+from scipy.sparse.linalg import svds
+
+from .tracking import FitFlags
 
 
 class LinearLatentModels(ABC):
