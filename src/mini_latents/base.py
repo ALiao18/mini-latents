@@ -68,9 +68,11 @@ def top_k_eig(Xc, k, solver="svds", random_state = 42):
     if solver == "svds" and k < min(N, d):
         _, s, Vt = svds(Xc, k=k, random_state=random_state)  # Lanczos, doesn't form S
         order = np.argsort(s)[::-1]
-        return s[order] ** 2 / N, Vt[order].T
+        trS = np.einsum("ij,ij->", Xc, Xc) / N    # O(Nd), no S available
+        return s[order] ** 2 / N, Vt[order].T, trS
 
     S = Xc.T @ Xc / N  # (d, d) sample covariance
     trS = np.trace(S)
     vals, vecs = sp.linalg.eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
+
     return vals[::-1], vecs[:, ::-1], trS
