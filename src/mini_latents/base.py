@@ -45,19 +45,32 @@ def fix_signs(W: np.ndarray) -> np.ndarray:
     idx = np.argmax(np.abs(W), axis=0)  # (k,) row of each column's largest |entry|
     return W * np.sign(W[idx, np.arange(W.shape[1])])
 
-
-def top_k_eig(Xc, k, solver="svds"):
+def top_k_eig(Xc, k, solver="svds", random_state = 42):
     """
-    Top-k eigenpairs of S = Xc^T Xc / N (descending),
-    tr(S)
+    Top-k eigenpairs of S = Xc^T Xc / N (descending), and tr(S).
+
+    solver="svds": Lanczos on Xc; never forms S. O(Nd) per matvec.
+    otherwise: forms S (d, d), then dense symmetric eigh.
+        O(Nd^2) to form S + O(d^3) tridiagonal reduction
+        (subset_by_index only saves the back-transform).
+
+    Parameters
+    ----------
+    Xc: ndarray (N, d)
+        Centered data matrix
+    k: int
+        Number of top eigenpairs to compute
+    solver: str, optional
+        "svds" (default) or anything else for dense eigh
     """
     N, d = Xc.shape
-    total_var = np.einsum("ij,ij->", Xc, Xc) / N  # Tr(S), O(Nd)
+
     if solver == "svds" and k < min(N, d):
-        v0 = np.ones(min(N, d)) / np.sqrt(min(N, d))  # fixed start
-        _, s, Vt = svds(Xc, k=k, v0=v0)  # Lanczos solver, iterative, doesn't form S
+        _, s, Vt = svds(Xc, k=k, random_state=random_state)  # Lanczos, doesn't form S
         order = np.argsort(s)[::-1]
-        return s[order] ** 2 / N, Vt[order].T, total_var
-    S = Xc.T @ Xc / N
-    vals, vecs = sp.linalg.eigh(S, subset_by_index=[d - k, d - 1])
-    return vals[::-1], vecs[:, ::-1], total_var
+        return s[order] ** 2 / N, Vt[order].T
+
+    S = Xc.T @ Xc / N  # (d, d) sample covariance
+    trS = np.trace(S)
+    vals, vecs = sp.linalg.eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
+    return vals[::-1], vecs[:, ::-1], trS

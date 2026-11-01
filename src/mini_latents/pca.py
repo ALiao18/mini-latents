@@ -31,8 +31,9 @@ class PCA(LinearLatentModels):
         """
         Fit the top n_components (k) principal components to the data X.
 
-        Forms (d, d) covariance and computes top 'n_components'
-        eigenpairs with scipy.linalg.eigh(subset_by_index=...)
+        computes top 'n_components' with 
+        1. default svds (lanczos solver): O(mnd + m^2d) time where k < m < d, doesn't require sample covariance
+        2. else scipy.linalg.eigh(subset_by_index=...) O(kd^2) time, requires sample covariance
 
         Parameters
         ----------
@@ -41,8 +42,7 @@ class PCA(LinearLatentModels):
 
         Returns
         ---------
-        PCA
-            The fitted model
+        self: PCA (fitted model)
 
         Raises
         ----------
@@ -50,16 +50,18 @@ class PCA(LinearLatentModels):
             If 'n_components' is not in [1, d]
         """
         X = np.asarray(X, dtype=np.float64)
+
         N, d = X.shape
         k = self.n_components
+
         if not 0 < k <= min(N, d):
-            msg = f"n_components must be < min({N - 1}, {d}), got {k}"
+            msg = f"n_components must be < min({N-1}, {d}), got {k}"
             raise ValueError(msg)
 
         # center the data
         self.mean_ = X.mean(axis=0)
-        Xc = X - self.mean_  # (N, d)
-        eigvals, eigvecs, total_var = top_k_eig(Xc, k)
+        Xc = X - self.mean_
+        eigvals, eigvecs, total_var = top_k_eig(Xc = Xc, k=k)
 
         self.explained_variance_ = eigvals
         self.components_ = fix_signs(eigvecs)
@@ -73,4 +75,8 @@ class PCA(LinearLatentModels):
         return self
 
     def infer_latents(self, X: np.ndarray):
+        """project data onto latent space (principal components)"""
+        X = np.asarray(X, dtype=np.float64)
         return (X - self.mean_) @ self.components_
+
+    

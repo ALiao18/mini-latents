@@ -11,11 +11,6 @@ scripts/
 .venv.nosync/
 .DS_Store
 
-# meeting notes
-meeting_2026-10-02.md
-minimal_tests.md
+# extra scripts
+pca_bench.py
 
-# local planning notes
-PLAN.md
-TODO.md
-settings.json

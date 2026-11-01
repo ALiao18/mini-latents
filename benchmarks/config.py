@@ -1,5 +1,5 @@
 """
-Benchmark configuratoin: sweep values, defaults, models, seeds
+Benchmark configuration: sweep values, defaults, models, seeds
 """
 
 from dataclasses import dataclass

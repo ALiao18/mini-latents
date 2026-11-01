@@ -2,6 +2,7 @@
 # Copyright (c) 2024 Evren Gokcen, MIT License (https://github.com/egokcen/latents)
 # Changes: mini_latents instead of latents; no psutil dependency; records BLAS
 # backend and thread settings, which decide whether runtime numbers are comparable.
+
 """System information collection for benchmark reproducibility."""
 
 from __future__ import annotations

@@ -48,6 +48,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         - tol: float
             per-sample log-likelihood gain. Stopping criteria for EM
         """
+
         X = np.asarray(X, dtype=np.float64)
         if n_components is None:
             n_components = self.n_components
@@ -69,9 +70,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         # zero mean the data
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d) broadcast over rows
-        X2 = np.einsum(
-            "ij,ij->j", Xc, Xc
-        )  # (d,) sum_n x_nj^2, fixed during EM: computed once
+        X2 = np.einsum("ij,ij->j", Xc, Xc)  # (d,) sum_n x_nj^2, fixed during EM: computed once
         S = Xc.T @ Xc / N  # (d,d) sample covariance, fixed during EM: computed once
 
         # initialize loading matrix with scaled random vectors.
