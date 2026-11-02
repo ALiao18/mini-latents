@@ -32,6 +32,12 @@ def geometric_nonzero_eig(S, N, TrS):
     rank = int(np.sum(eigvals > eigvals[0] * tol_scale))
     return np.exp(np.log(eigvals[:rank]).mean())
 
+def S_products(S, W, psi):
+    """products of S for params (W, psi). O(d^2 k)"""
+    B = W / psi[:, None]
+    SB_raw = S @ B
+    return B.T @ SB_raw, SB_raw
+
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
 
@@ -57,7 +63,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         min_var_frac=None,
     ):
         """
-        Fit the model using the EM algorithm.
+        Fit the model using the EM algorithm. O(d^2k)
 
         Stopping criterion:
         fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than
@@ -70,7 +76,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         - n_components: int,
             denoted as k, defaults to value passed to __init__, passing here overrides and updates self.n_components
         - tol: float
-            per-sample log-likelihood gain. Stopping criteria for EM
+            Stopping criteria for EM
         """
         X = np.asarray(X, dtype=np.float64)
         N, d = X.shape
@@ -91,6 +97,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         self.mean_ = X.mean(axis=0)  # (d,)
         Xc = X - self.mean_  # (N, d). O(Nd)
         S = Xc.T @ Xc / N  # (d,d), O(Nd^2) sample covariance
+        del Xc
         diagS = np.diag(S).copy() # (d,)
         TrS = diagS.sum()  # (scalar), O(d), total variance
          
@@ -99,17 +106,23 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         self._init_noise(diagS, sigma2)
         self.ll_history_ = []
 
+        # cache for (W, psi), used by LL and next E-step
+        psi = self.noise_model.noise_as_vec()
+        BtSB, SB_raw = S_products(S, W, psi)
+
         ll_curr = -np.inf
         ll_base = -np.inf
         ll_old = -np.inf
 
         for i in range(max_iter):
-            # 1. e-step from S O(d^2k) for FA, O(dk)
-            SB, G = e_step_S(S, W, self.noise_model.noise_as_vec())
+            # 1. e-step from S O(dk^2 + k^3) for FA, O(dk) for pPCA
+            SB, G = e_step_S(W, psi, BtSB, SB_raw)
 
             # 2. m-step 
             W = m_step_W(SB, G) # O(k^3 + dk^2)
             self.noise_model.m_step(W, SB, diagS) # O(dk)
+            psi = self.noise_model.noise_as_vec()
+            BtSB, SB_raw = S_products(S, W, psi)
 
             # 3. convergence checks, update flags
             if (
@@ -118,7 +131,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ):
                 self.flags.heywood = True
 
-            ll_curr = log_likelihood(W, self.noise_model.noise_as_vec(), S, N)
+            ll_curr, BtSB = log_likelihood(W, psi, diagS, SB_raw, N) # O(d + k^3)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
@@ -134,7 +147,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ll_old = ll_curr
 
         if not self.ll_history_: # max_iter == 0 PCA closed form
-            ll_curr = log_likelihood(W, self.noise_model.noise_as_vec(), S, N)
+            ll_curr, _ = log_likelihood(W, psi, diagS, SB_raw, N)
 
         # EM is sign-equivariant: flipping a column of W leaves C unchanged
         self.components_ = fix_signs(W)  

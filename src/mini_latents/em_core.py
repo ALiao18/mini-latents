@@ -53,7 +53,7 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
 
     return Ez, sum_Ezz
 
-def e_step_S(S, W, psi):
+def e_step_S(W, psi, BtSB, SB_raw):
     """
     E-step from sample covariance S (d, d). 
 
@@ -73,14 +73,13 @@ def e_step_S(S, W, psi):
         raise ValueError(msg)
     k = W.shape[1]
 
-    Psi_inv_W = W / psi[:, None]            # (d, k)
+    Psi_inv_W = W / psi[:, None]            # (d,k)
     M_inv = np.eye(k) + W.T @ Psi_inv_W     # (k,k)
     L = np.linalg.cholesky(M_inv)           # (k,k)
     M = cholesky_solve(np.eye(k), L)        # (k, k) posterior covariance
 
-    beta_T = Psi_inv_W @ M                  # (d, k) O(dk^2)
-    SB = S @ beta_T                         # (d, k) O(d^2k)
-    G = M + beta_T.T @ SB                   # (k, k) O(dk^2)
+    SB = SB_raw @ M                        # (d, k) O(dk^2)
+    G = M + M @ BtSB @ M                   # (k, k) O(k^3)
 
     return SB, G                
 
@@ -102,8 +101,16 @@ def m_step_W(SB: np.ndarray, G: np.ndarray) -> np.ndarray:
     W_new = cholesky_solve(SB.T, L).T
     return W_new
 
-def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> float:
+def log_likelihood(
+        W: np.ndarray, 
+        psi: np.ndarray, 
+        diagS: np.ndarray,
+        BtSB: np.ndarray,
+        N: int,
+        ) -> float:
     """
+    O(d + k^3)
+
     Marginal log-likelihood under the model, with z integrated out:
         x ~ N(0, C),   C = W W^T + Psi
     From the sample covariance alone:
@@ -118,7 +125,6 @@ def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> flo
     ----------
     W   (d,k): current loading matrix
     psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
-    S   (d,d): sample covariance X^T X / N of the centered data, fixed during EM
     N        : n_samples
 
     Returns
@@ -153,12 +159,11 @@ def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> flo
     N_log_C = N * log_C
 
     # term 2   Woodbury identity: sum_n x_n^T C^-1 x_n = N (quad_psi - quad_W)
-    # 1. tr(Psi^-1 S)
-    quad_psi = psi_inv @ np.diagonal(S)  # O(d)
+    quad_psi = psi_inv @ diagS  # O(d)
+
     # 2. tr(M B^T S B) with B = psi_inv W
-    BtSB = psi_inv_W.T @ S @ psi_inv_W  # (k,k), O(d^2 k)
     quad_W = np.trace(cholesky_solve(BtSB, L))  # O(k^3)
-    quad_C_inv = N * (quad_psi - quad_W)
+    quad_C_inv = N * (quad_psi - quad_W) 
 
     # marginal log-likelihood
     constant = N * d * np.log(2 * np.pi)

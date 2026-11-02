@@ -46,7 +46,7 @@ def fix_signs(W: np.ndarray) -> np.ndarray:
     idx = np.argmax(np.abs(W), axis=0)  # (k,) row of each column's largest |entry|
     return W * np.sign(W[idx, np.arange(W.shape[1])])
 
-def top_k_eig_cov(S, k, solver="eighsh", random_state=42):
+def top_k_eig_cov(S, k, solver="eigsh", random_state=42):
     """
     Top-k descending eigenpairs of a covariance matrix
     
@@ -61,7 +61,7 @@ def top_k_eig_cov(S, k, solver="eighsh", random_state=42):
     if solver == "eigsh" and k < d:
         vals, vecs = eigsh(S, k=k, which="LA", random_state=random_state) # LA = Largest Algebraic eigenvalues
     else:
-        vals, vecs = eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
+        vals, vecs = eigh(S, subset_by_index=[d - k, d - 1])
 
     order = np.argsort(vals)[::-1]
     return vals[order], vecs[:, order]
