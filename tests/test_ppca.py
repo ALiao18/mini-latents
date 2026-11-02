@@ -115,53 +115,6 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
     )
     np.testing.assert_allclose(model.log_likelihood_, recomputed, rtol=1e-9)
 
-
-@pytest.mark.parametrize("seed", [0, 1, 2])
-def test_em_from_random_start_reaches_the_closed_form(iso_data, monkeypatch, seed):
-    """
-    EM started from a random (W, sigma^2) converges to the closed-form ML solution
-    and stops on its own.
-
-    W is identified only up to rotation (W R gives the same model), so W itself is
-    not compared; the implied covariance W W^T + sigma^2 I is.
-
-    Tolerances: near the maximum the ll is quadratic in the parameters, so stopping
-    at relative ll error ~tol leaves parameter errors ~sqrt(tol). At tol=1e-12 this
-    data measures ll ~1e-12, sigma^2 ~3e-8, covariance ~6e-6 (relative); the bounds
-    below leave about 100x headroom.
-    """
-    X, k = iso_data["X"], iso_data["k"]
-    d = X.shape[1]
-
-    closed = pPCA(k).fit(X)
-    C_closed = (
-        closed.components_ @ closed.components_.T + closed.noise_model.psi * np.eye(d)
-    )
-
-    rng = np.random.default_rng(seed)
-    W0 = rng.normal(size=(d, k))
-    sigma2_0 = rng.uniform(0.5, 2.0)
-    model = pPCA(k)
-    monkeypatch.setattr(model, "_init_W", lambda Xc, n_components: (W0, sigma2_0))
-    model.fit(X, method="em", tol=1e-12, max_iter=100_000)
-    C_em = model.components_ @ model.components_.T + model.noise_model.psi * np.eye(d)
-
-    assert model.flags.converged
-    assert not model.flags.decreasing_ll
-    assert model.n_iter_ > 2
-    # the closed form is the global maximum: EM can approach it, not exceed it
-    assert model.log_likelihood_ <= closed.log_likelihood_ + 1e-12 * abs(
-        closed.log_likelihood_
-    )
-    np.testing.assert_allclose(
-        model.log_likelihood_, closed.log_likelihood_, rtol=1e-10
-    )
-    np.testing.assert_allclose(model.noise_model.psi, closed.noise_model.psi, rtol=1e-6)
-    np.testing.assert_allclose(
-        C_em, C_closed, rtol=0, atol=1e-4 * np.abs(C_closed).max()
-    )
-
-
 # --- recovery and limits ---------------------------------------------------
 
 

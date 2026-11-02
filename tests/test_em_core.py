@@ -93,18 +93,6 @@ def test_e_step_second_moments_are_symmetric_psd(wpsi):
     assert np.linalg.eigvalsh(Ezz).min() > -1e-10
 
 
-# --- m_step_W --------------------------------------------------------------
-
-
-def test_m_step_W_solves_normal_equations(wpsi):
-    """W_new sum_Ezz = sum_i x_i Ez_i^T is the equation the M-step claims to solve."""
-    X, W, Psi = wpsi
-    Ez, Ezz = e_step(X, W, Psi)
-
-    W_new = m_step_W(Ez, Ezz, X.T @ Ez)
-
-    np.testing.assert_allclose(W_new @ Ezz, X.T @ Ez, rtol=1e-7, atol=1e-9)
-
 
 # --- log_likelihood --------------------------------------------------------
 

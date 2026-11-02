@@ -18,11 +18,16 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
     """
     Compute posterior over latent variables z | x for each sample. O(Ndk)
 
+    keep for E[z|x] in infer_latents
+
     Params
     ------
-    X   (N,d): centered data matrix
-    W   (d,k): current loading matrix
-    psi (d, ): flattened diagonal noise covariance from noise_model.noise_as_vec()
+    X (N,d): ndarray
+        centered data matrix
+    W (d,k): ndarray
+        current loading matrix
+    psi (d, ): ndarray
+        flattened diagonal noise covariance from noise_model.noise_as_vec()
 
     Returns
     -------
@@ -48,28 +53,54 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
 
     return Ez, sum_Ezz
 
-
-def m_step_W(Ez: np.ndarray, sum_Ezz: np.ndarray, XtEz: np.ndarray) -> np.ndarray:
+def e_step_S(S, W, psi):
     """
-    Closed-form M-step update for W.
-    W_new = ( sum_i x_i Ez_i^T ) ( sum_i Ezz_i )^-1
+    E-step from sample covariance S (d, d). 
+
+    beta:
+    M:
+    
+    SB: S beta^T = XtEZ / N
+    G: M + beta S beta^T = sum_Ezz / N
+
+    Returns
+    -------
+    SB (d, k): ndarray
+    G (k, k): ndarray
+    """
+    if psi.ndim != 1:
+        msg = f"psi must be in the (d, ) diagonal, got shape {psi.shape}"
+        raise ValueError(msg)
+    k = W.shape[1]
+
+    Psi_inv_W = W / psi[:, None]            # (d, k)
+    M_inv = np.eye(k) + W.T @ Psi_inv_W     # (k,k)
+    L = np.linalg.cholesky(M_inv)           # (k,k)
+    M = cholesky_solve(np.eye(k), L)        # (k, k) posterior covariance
+
+    beta_T = Psi_inv_W @ M                  # (d, k) O(dk^2)
+    SB = S @ beta_T                         # (d, k) O(d^2k)
+    G = M + beta_T.T @ SB                   # (k, k) O(dk^2)
+
+    return SB, G                
+
+def m_step_W(SB: np.ndarray, G: np.ndarray) -> np.ndarray:
+    """
+    W_new = SB G^-1
+    O(dk^2 + k^3).
 
     Params
     ------
-    Ez      (N,k): posterior mean
-    sum_Ezz (k,k): sum of E[z z^T], (N, k, k) posterior second moment over N
-    XtEz    (d,k): X^T Ez = sum_i x_i Ez_i^T, optional; fit() passes it so the noise
-                   M-step reuses it instead of a second O(Ndk) product
+    SB   (d,k): sum_i x_i Ez_i^T / N
+    G    (k,k): sum_i Ezz_i / N
 
     Returns
     ------
     W_new   (d,k): updated loading matrix
     """
-    L = np.linalg.cholesky(sum_Ezz)  # (k,k)
-    W_new = cholesky_solve(XtEz.T, L).T  # (d,k)
-
+    L = np.linalg.cholesky(G) # O(k^3 / 3)
+    W_new = cholesky_solve(SB.T, L).T
     return W_new
-
 
 def log_likelihood(W: np.ndarray, psi: np.ndarray, S: np.ndarray, N: int) -> float:
     """

@@ -7,22 +7,21 @@ class NoiseModel(ABC):
     @abstractmethod
     def m_step(
         self,
-        W: np.ndarray,
-        sum_Ezz: np.ndarray,
-        N: int,
-        X2: np.ndarray,
-        XtEz: np.ndarray,
+        W_new: np.ndarray,
+        SB: np.ndarray,
+        diagS: np.ndarray,
     ):
         """
         m-step of the EM algorithm
 
         Params:
         -------
-        W       (d,k): weight matrix
-        sum_Ezz (k,k): sum over n posterior second moment of latent variables
-        N            : sample count, int
-        X2      (d, ): sum_n x_nj^2
-        XtEz    (d,k): X^T Ez
+        W_new (d, k):
+            updated loading matrix from the M-step
+        SB (d, k):
+            sum_i x_i Ez_i^T / N
+        diagS (d, ):
+            diag(S), S = Xc^T Xc / N
         """
 
     @abstractmethod
@@ -60,33 +59,12 @@ class IsotropicNoise(NoiseModel):
 
     def m_step(
         self,
-        W: np.ndarray,
-        sum_Ezz: np.ndarray,
-        N: int,
-        X2: np.ndarray,
-        XtEz: np.ndarray,
+        W_new: np.ndarray,
+        SB: np.ndarray,
+        diagS: np.ndarray
     ) -> None:
-        """
-        Noise update for pPCA. O(Ndk + dk^2)
-
-        params
-        ------
-        W       (d, k): loading matrix
-        sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
-        X2      (d,  ): sum_n x_nj^2, optional; computed from X if None
-        XtEz    (d, k): X^T Ez, optional; fit() reuses m_step_W's product
-        """
-        d = W.shape[0]
-        recon_term = X2.sum()  # scalar: sums j over (d,)
-        cross_term = 2 * np.sum(
-            W * XtEz
-        )  # scalar: 2 sum_n (W^T x_n)^Ez_n = 2 trace(W^T X^T Ez), O(dk)
-        trace_term = np.sum(
-            (W.T @ W) * sum_Ezz
-        )  # scalar sum_n Ez_n^T W^T W Ez_n = trace(W^T W sum_n Ezz_n), O(dk^2)
-
-        S = recon_term - cross_term + trace_term  # scalar
-        self.psi = S / (N * d)  # scalar
+        """Noise update for pPCA O(dk)"""
+        self.psi = (diagS.sum() - np.sum(W_new * SB)) / self.d
 
     def noise_as_vec(self):
         return np.full(self.d, self.psi)  # (d,)
@@ -109,37 +87,12 @@ class AnisotropicNoise(NoiseModel):
 
     def m_step(
         self,
-        W: np.ndarray,
-        sum_Ezz: np.ndarray,
-        N: int,
-        X2: np.ndarray,
-        XtEz: np.ndarray,
+        W_new: np.ndarray,
+        SB: np.ndarray,
+        diagS: np.ndarray,
     ) -> None:
-        """
-        Noise update for FA. O(Ndk + dk^2)
-
-        psi_j = expected squared residual (R_j) of feature j, summed over samples
-
-        R_j = recon - cross + quad
-            recon = sum_n x_nj**2
-            cross = 2 w_j^T (sum_n <z_n> x_nj)
-            quad  = w_j^T (sum_n < z_n z_n^T>) w_j
-
-        Params
-        ------
-        X       (N, d): centered data
-        W       (d, k): loading matrix
-        Ez      (N, k): posterior mean
-        sum_Ezz (k, k): sum of E[z z^T], (N, k, k) posterior second moment over N
-        X2      (d,  ): sum_n x_nj^2, optional; computed from X if None
-        XtEz    (d, k): X^T Ez, optional; fit() reuses m_step_W's product
-        """
-        recon_term = X2  # (d,): sums n over (N, d)
-        cross_term = 2 * np.sum(W * XtEz, axis=1)  # (d,): sums k over (d, k), O(dk)
-        quad_term = np.sum((W @ sum_Ezz) * W, axis=1)  # (d,): sums k over (d, k)
-
-        R = recon_term - cross_term + quad_term  # (d,)
-        self.psi = R / N  # (d,)
+        """Noise update for FA. O(dk)"""
+        self.psi = diagS - np.sum(W_new * SB, axis = 1) # (d,)
         self.floored = np.any(self.psi < self.var_floor)
         self.psi = np.clip(self.psi, self.var_floor, None)
 
