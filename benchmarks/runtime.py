@@ -43,16 +43,10 @@ def sweep_tasks(config: BenchmarkConfig = RUNTIME_CONFIG) -> list[tuple]:
     return [(s, i) for s in config.get_active_sweeps() for i in range(config.n_runs)]
 
 
-def run_sweep_task(
-    sweep: str,
-    run_idx: int,
-    config: BenchmarkConfig = RUNTIME_CONFIG,
-    models: tuple[str, ...] = RUNTIME_MODELS,
-) -> list[dict]:
-    memory = run_idx < MEMORY_RUNS
+def sweep_points(sweep: str, run_idx: int, config: BenchmarkConfig):
+    """Yield (value_idx, X, {N, d, k}, snr) for each value of a one-factor sweep."""
     values = config.get_sweep_config(sweep).values
     N, d, k = int(config.N.default), int(config.d.default), int(config.k.default)
-    rows = []
 
     if sweep in SUBSETTING_SWEEPS:  # generate once at max, slice
         N_gen = int(config.N.max_value) if sweep == "N" else N
@@ -72,7 +66,18 @@ def run_sweep_task(
                                           seed=config.get_data_seed(sweep, run_idx, value_idx))
             X = sim_k.X
             point, snr_used = {"N": N, "d": d, "k": value}, config.snr
+        yield value_idx, X, point, snr_used
 
+
+def run_sweep_task(
+    sweep: str,
+    run_idx: int,
+    config: BenchmarkConfig = RUNTIME_CONFIG,
+    models: tuple[str, ...] = RUNTIME_MODELS,
+) -> list[dict]:
+    memory = run_idx < MEMORY_RUNS
+    rows = []
+    for value_idx, X, point, snr_used in sweep_points(sweep, run_idx, config):
         seed = config.get_fit_seed(sweep, run_idx, value_idx)
         for model in models:
             rows.append({"sweep": sweep, "run_idx": run_idx, **point, "snr": snr_used,

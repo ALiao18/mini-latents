@@ -45,8 +45,8 @@ def _build_and_fit(name, X, k, seed, fit: FitSettings):
     if name == "sk_pca":
         return SkPCA(n_components=k).fit(X)  # svd_solver="auto", out-of-the-box
     if name == "sk_fa":
-        # sklearn defaults (tol=1e-2 on absolute ll change, randomized SVD): different
-        # stopping rule from ours, so compare iterations as well as time.
+        # sklearn defaults (tol=1e-2 on absolute ll change, randomized SVD). Different
+        # algorithm and stopping rule: used for memory only; see benchmarks/convergence.py.
         return SkFA(n_components=k, max_iter=fit.max_iter, random_state=_int_seed(seed)).fit(X)
     msg = f"unknown model '{name}'"
     raise ValueError(msg)

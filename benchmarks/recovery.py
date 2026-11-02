@@ -44,7 +44,6 @@ def run_task(noise: str, run_idx: int, config: BenchmarkConfig = RECOVERY_CONFIG
                 "psi_error": relative_l2_error(p.psi, r.psi),
                 # FA -> pPCA check (meaningful on iso data): every psi_j -> sigma^2
                 "psi_max_rel_dev": float(np.max(np.abs(r.psi / sigma2_true - 1.0))),
-                "psi_cv": float(np.std(r.psi) / np.mean(r.psi)),
                 "denoised_r2": denoised_r2(p.W, Z_true.T, p.mu, r.W, r.Z.T, r.mu),
                 "n_iter": r.n_iter,
                 "converged": r.converged,

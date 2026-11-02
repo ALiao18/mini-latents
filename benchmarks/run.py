@@ -19,6 +19,7 @@ for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECL
 import argparse  # noqa: E402
 import csv  # noqa: E402
 import multiprocessing as mp  # noqa: E402
+import sys  # noqa: E402
 import time  # noqa: E402
 import traceback  # noqa: E402
 from concurrent.futures import ProcessPoolExecutor, as_completed  # noqa: E402
@@ -26,14 +27,14 @@ from dataclasses import replace  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from benchmarks import config as C  # noqa: E402
-from benchmarks import recovery, runtime, stages  # noqa: E402
+from benchmarks import convergence, recovery, runtime, stages  # noqa: E402
 from benchmarks.system_info import save_system_info  # noqa: E402
 
 QUICK = {  # tiny configs for a smoke test
     "recovery": replace(C.RECOVERY_CONFIG, N=C.SweepConfig(200, (100, 400)), d=C.SweepConfig(10), n_runs=2),
     "runtime": replace(C.RUNTIME_CONFIG, N=C.SweepConfig(200, (100, 400)),
                        d=C.SweepConfig(20, (10, 20)), k=C.SweepConfig(2, (2, 4)), n_runs=1),
-    "grid": replace(C.BOUNDARY_CONFIG, N_values=(100, 400), d_values=(10, 30), k=3, n_runs=1),
+    "grid": replace(C.BOUNDARY_CONFIG, N_values=(100, 400), d_values=(10, 30, 100), k=3, n_runs=1),
     "stages": replace(C.STAGE_CONFIG, N=C.SweepConfig(400, (200, 400)),
                       d=C.SweepConfig(20, (10, 20)), n_runs=1),
 }
@@ -48,6 +49,7 @@ def _benchmarks(quick: bool) -> dict:
     return {
         "recovery": (recovery.tasks(cfg["recovery"]), recovery.run_task, cfg["recovery"]),
         "runtime": (runtime.sweep_tasks(cfg["runtime"]), runtime.run_sweep_task, cfg["runtime"]),
+        "convergence": (convergence.tasks(cfg["runtime"]), convergence.run_task, cfg["runtime"]),
         "grid": (runtime.grid_tasks(cfg["grid"]), runtime.run_grid_task, cfg["grid"]),
         "stages": (stages.tasks(cfg["stages"]), stages.run_task, cfg["stages"]),
     }
@@ -76,6 +78,7 @@ def _run_one(fn, args, cfg, part_path: str) -> tuple[str, float, str | None]:
 
 
 def _concat(parts_dir: Path, out_path: Path) -> int:
+    csv.field_size_limit(sys.maxsize)  # convergence rows hold a whole ll trace
     rows = []
     for p in sorted(parts_dir.glob("*.csv")):
         with open(p, newline="") as f:
@@ -86,7 +89,7 @@ def _concat(parts_dir: Path, out_path: Path) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("benchmark", choices=["recovery", "runtime", "grid", "stages", "all"])
+    ap.add_argument("benchmark", choices=["recovery", "runtime", "convergence", "grid", "stages", "all"])
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 4))
     ap.add_argument("--out", type=Path, default=Path("benchmarks/results"))
     ap.add_argument("--quick", action="store_true", help="tiny configs (smoke test)")
@@ -98,7 +101,7 @@ def main() -> None:
 
     benches = _benchmarks(args.quick)
     # Slowest first, so the long tail starts early.
-    order = ["grid", "runtime", "stages", "recovery"]
+    order = ["grid", "runtime", "convergence", "stages", "recovery"]
     names = order if args.benchmark == "all" else [args.benchmark]
 
     jobs = []

@@ -6,6 +6,7 @@ Writes PNGs to <results>/figures/ and prints the numbers behind each figure.
 """
 
 import argparse
+import json
 from pathlib import Path
 
 import matplotlib
@@ -25,17 +26,17 @@ MODEL_STYLE = {  # color follows the algorithm; dashed = sklearn implementation
     "ppca_em": dict(color="#1baf7a", marker="^", ls="-", label="pPCA EM"),
     "fa": dict(color="#eda100", marker="D", ls="-", label="FA EM"),
     "sk_pca": dict(color="#2a78d6", marker="o", ls="--", label="sklearn PCA", mfc="white"),
-    "sk_fa": dict(color="#eda100", marker="D", ls="--", label="sklearn FA", mfc="white"),
+    "sk_fa": dict(color="#eda100", marker="D", ls="--", label="sklearn FA (randomized SVD)", mfc="white"),
+    "sk_fa_lapack": dict(color="#6250d6", marker="v", ls="--", label="sklearn FA (exact SVD)", mfc="white"),
 }
 STAGE_GROUPS = {  # <= 8 stacked segments, fixed order (categorical slots 1..8)
-    "setup (center, X2)": ["t_center", "t_X2"],
+    "center": ["t_center"],
     "form S": ["t_form_S"],
     "init": ["t_init"],
     "E-step": ["t_e_step"],
-    "X^T E[z]": ["t_XtEz"],
+    "S products": ["t_S_products"],
     "M-steps": ["t_m_step_W", "t_m_step_noise"],
     "log-likelihood": ["t_log_likelihood"],
-    "final LL (recomputes S)": ["t_final_ll"],
 }
 STAGE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 DIVERGING = LinearSegmentedColormap.from_list("blue_gray_red", ["#184f95", "#f0efec", "#b3302f"])
@@ -117,21 +118,16 @@ def fig_recovery(rec: pd.DataFrame, out: Path) -> None:
 def fig_fa_to_ppca(rec: pd.DataFrame, out: Path) -> None:
     sub = rec[(rec.noise == "iso") & (rec.model == "fa")]
     fig, ax = plt.subplots(figsize=(6, 4.2))
-    print("\n[FA -> pPCA] FA fitted to isotropic data: per-feature psi_j vs the true sigma^2")
-    for col, label, color, marker in [
-        ("psi_max_rel_dev", r"max$_j\,|\hat\psi_j/\sigma^2 - 1|$  (worst feature)", "#eda100", "D"),
-        ("psi_cv", r"std$(\hat\psi)$ / mean$(\hat\psi)$  (spread across features)", "#6250d6", "o"),
-    ]:
-        s = mean_sem(sub, "N", col)
-        ax.plot(s.N, s["mean"], color=color, marker=marker, label=label)
-        ax.fill_between(s.N, s["mean"] - s["sem"], s["mean"] + s["sem"], color=color, alpha=0.15, lw=0)
-        print(f"  {col:16s} slope={fitted_slope(s.N, s['mean']):+.2f} values={np.round(s['mean'].to_numpy(), 4).tolist()}")
+    print("\n[FA -> pPCA] FA fitted to isotropic data: worst per-feature psi_j vs the true sigma^2")
     s0 = mean_sem(sub, "N", "psi_max_rel_dev")
+    ax.plot(s0.N, s0["mean"], color="#eda100", marker="D")
+    ax.fill_between(s0.N, s0["mean"] - s0["sem"], s0["mean"] + s0["sem"], color="#eda100", alpha=0.15, lw=0)
+    print(f"  psi_max_rel_dev slope={fitted_slope(s0.N, s0['mean']):+.2f} values={np.round(s0['mean'].to_numpy(), 4).tolist()}")
     ref_slope(ax, s0.N, s0["mean"].iloc[0], -0.5, r"$N^{-1/2}$")
-    ax.set(xscale="log", yscale="log", xlabel="Number of samples N", ylabel="Relative deviation")
+    ax.set(xscale="log", yscale="log", xlabel="Number of samples N",
+           ylabel=r"Worst-feature error  max$_j\,|\hat\psi_j/\sigma^2 - 1|$")
     ax.set_title("FA → pPCA: every noise variance converges to σ² as N grows\n"
                  "(d = 50, k = 3, isotropic data; 10 runs, mean ± SEM)", fontsize=10)
-    ax.legend(loc="lower left", fontsize=8.5)
     fig.tight_layout()
     fig.savefig(out / "2_fa_to_ppca.png")
     plt.close(fig)
@@ -155,6 +151,8 @@ def fig_runtime(rt: pd.DataFrame, out: Path) -> None:
             for m in models:
                 if col == "n_iter" and m in ("pca", "ppca_cf", "sk_pca"):
                     continue  # closed form: no iterations
+                if col != "peak_mem_mb" and m == "sk_fa":
+                    continue  # different algorithm and stopping rule: see fig 6
                 s = mean_sem(sub[sub.model == m].dropna(subset=[col]), sweep, col)
                 if s.empty:
                     continue
@@ -176,8 +174,8 @@ def fig_runtime(rt: pd.DataFrame, out: Path) -> None:
     axes[0, 0].legend(loc="upper left", fontsize=8)
     fig.suptitle("Runtime, EM iterations and peak memory (one-factor sweeps, SNR = 1; "
                  "10 runs for time, 2 for memory; single-threaded BLAS)\n"
-                 "sklearn FA uses its own SVD-based iteration and stopping rule (tol=1e-2): "
-                 "iteration counts are not comparable", fontsize=10, color=INK2)
+                 "sklearn FA appears for memory only: its time and iterations are not comparable, "
+                 "see fig 6 for FA vs sklearn at a common likelihood", fontsize=10, color=INK2)
     fig.tight_layout()
     fig.savefig(out / "3_runtime_scaling.png")
     plt.close(fig)
@@ -284,9 +282,87 @@ def fig_boundary(grid: pd.DataFrame, out: Path) -> None:
     print((iters.div(iters.index.to_series(), axis=0)).round(2).to_string())
 
 
+# ---- Fig 6: FA EM vs sklearn FA at a common likelihood ----------------------------
+
+
+def fig_convergence(cv: pd.DataFrame, out: Path) -> None:
+    models = ["fa", "sk_fa", "sk_fa_lapack"]
+    target = 1e-3  # nats/sample, for the bottom row
+    floor = 1e-8  # gaps at or below this are plotted at the floor
+    gaps = sorted(float(c.removeprefix("time_gap_")) for c in cv.columns if c.startswith("time_gap_"))
+    fig, axes = plt.subplots(2, 3, figsize=(13, 8))
+
+    # Top row: one dataset size. Lower median of the N sweep, where d and k are at default.
+    sweep_N = cv[cv.sweep == "N"]
+    Ns = sorted(sweep_N.N.unique())
+    N0 = Ns[(len(Ns) - 1) // 2]
+    base = sweep_N[sweep_N.N == N0]
+    d0, k0 = base.d.iloc[0], base.k.iloc[0]
+
+    ax = axes[0, 0]
+    for m in models:
+        st = MODEL_STYLE[m]
+        for i, (_, r) in enumerate(base[base.model == m].iterrows()):
+            gap = np.maximum(r.best_ll - np.array(json.loads(r.ll_trace)), floor)
+            ax.plot(np.arange(1, gap.size + 1), gap, color=st["color"], ls=st["ls"], lw=1.2, alpha=0.5,
+                    label=st["label"] if i == 0 else None)
+    ax.axhline(target, color=INK2, ls=":", lw=1.2)
+    ax.set(xscale="log", yscale="log", xlabel="Iteration (not the same unit across solvers)",
+           ylabel="Log-likelihood gap to best (nats/sample)")
+    ax.set_title(f"Likelihood traces  (N={N0:,}, d={d0}, k={k0})")
+    ax.legend(loc="lower left", fontsize=8)
+
+    ax = axes[0, 1]
+    for m in models:
+        sub = base[base.model == m]
+        y = np.array([sub[f"time_gap_{g:.0e}"].mean() for g in gaps])
+        sem = np.array([sub[f"time_gap_{g:.0e}"].sem() for g in gaps])
+        plot_line(ax, np.array(gaps), y, sem, m)
+    ax.set(xscale="log", yscale="log", xlabel="Target gap (nats/sample; tighter →)", ylabel="Time to target (s)")
+    ax.invert_xaxis()
+    ax.set_title("Time to reach a given likelihood")
+
+    ax = axes[0, 2]
+    sub_k = cv[cv.sweep == "k"]
+    for m in models:
+        s = mean_sem(sub_k[sub_k.model == m].assign(g=lambda df: df.final_gap.clip(lower=floor)), "k", "g")
+        plot_line(ax, s.k, s["mean"], s["sem"], m)
+    ax.set(xscale="log", yscale="log", xlabel="Latent dims k", ylabel="Final gap to best (nats/sample)")
+    ax.set_xticks(sorted(sub_k.k.unique()), [f"{v:,}" for v in sorted(sub_k.k.unique())])
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.set_title("Where each solver ends up")
+
+    col = f"time_gap_{target:.0e}"
+    print(f"\n[convergence] seconds to within {target:g} nats/sample of the best likelihood (reached/runs)")
+    for j, (sweep, xlabel) in enumerate([("N", "Number of samples N"), ("d", "Observed dims d"), ("k", "Latent dims k")]):
+        ax = axes[1, j]
+        sub = cv[cv.sweep == sweep]
+        for m in models:
+            g = sub[sub.model == m].groupby(sweep)
+            s = mean_sem(sub[sub.model == m], sweep, col)
+            reached, runs = g[col].count(), g[col].size()
+            s = s[s[sweep].map(reached == runs)]  # a mean over only the runs that made it would flatter
+            print(f"  vs {sweep}: {m:13s} " + "  ".join(
+                f"{v:,}: {g[col].mean()[v]:.3g}s ({reached[v]}/{runs[v]}), {g[f'iters_gap_{target:.0e}'].mean()[v]:.0f} it"
+                for v in runs.index))
+            if not s.empty:
+                plot_line(ax, s[sweep], s["mean"], s["sem"], m)
+        ax.set(xscale="log", yscale="log", xlabel=xlabel)
+        ax.set_xticks(sorted(sub[sweep].unique()), [f"{v:,}" for v in sorted(sub[sweep].unique())])
+        ax.xaxis.set_minor_formatter(NullFormatter())
+        if j == 0:
+            ax.set_ylabel(f"Time to within {target:g} nats/sample (s)")
+    fig.suptitle("FA EM vs sklearn FA: same data, same starting ψ, likelihood scored by one evaluator; "
+                 "single-threaded BLAS\nPoints are omitted where any run never reached the target",
+                 fontsize=10, color=INK2)
+    fig.tight_layout()
+    fig.savefig(out / "6_fa_vs_sklearn_convergence.png")
+    plt.close(fig)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("results", type=Path, help="folder with recovery.csv, runtime.csv, stages.csv, grid.csv")
+    ap.add_argument("results", type=Path, help="folder with recovery.csv, runtime.csv, convergence.csv, stages.csv, grid.csv")
     args = ap.parse_args()
     out = args.results / "figures"
     out.mkdir(exist_ok=True)
@@ -299,6 +375,7 @@ def main() -> None:
     fig_runtime(rt, out)
     fig_stages(stg, out)
     fig_boundary(grid, out)
+    fig_convergence(pd.read_csv(args.results / "convergence.csv"), out)
     print(f"\nfigures -> {out}")
 
 

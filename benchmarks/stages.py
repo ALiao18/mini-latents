@@ -11,13 +11,12 @@ from benchmarks.config import FIT, MODELS, STAGE_CONFIG, SUBSETTING_SWEEPS, Benc
 from benchmarks.data import generate_ground_truth, subset_by_dims, subset_by_samples
 from benchmarks.models import fit_model
 from mini_latents.base import top_k_eig
-from mini_latents.em_core import e_step, log_likelihood, m_step_W
-from mini_latents.noise_model import AnisotropicNoise
-from mini_latents.ppca_fa import FA, pPCA
+from mini_latents.em_core import e_step_S, log_likelihood, m_step_W
+from mini_latents.ppca_fa import FA, S_products, pPCA
 
 STAGES = (
-    "center", "X2", "form_S", "init", "e_step", "XtEz",
-    "m_step_W", "m_step_noise", "log_likelihood", "final_ll", "eig",
+    "center", "form_S", "init", "S_products", "e_step",
+    "m_step_W", "m_step_noise", "log_likelihood", "eig",
 )
 
 
@@ -46,27 +45,31 @@ def _profile_em(model_name, X, k, seed) -> tuple[dict, int]:
     tol = FIT.tol
 
     X = np.asarray(X, dtype=np.float64)
-    N, d = X.shape
+    N = X.shape[0]
     mean = T("center", np.mean, X, axis=0)
     Xc = T("center", np.subtract, X, mean)
-    X2 = T("X2", np.einsum, "ij,ij->j", Xc, Xc)
     S = T("form_S", lambda A: A.T @ A / N, Xc)
+    del Xc
+    diagS = T("form_S", lambda: np.diag(S).copy())
+    TrS = T("form_S", diagS.sum)
 
     def _init():
-        W, sigma2 = m._init_W(Xc, k)
-        m._init_noise(Xc, sigma2)
+        W, sigma2 = m._init_W(S=S, TrS=TrS, N=N, n_components=k)
+        m._init_noise(diagS, sigma2)
         return W
 
     W = T("init", _init)
+    psi = m.noise_model.noise_as_vec()
+    BtSB, SB_raw = T("S_products", S_products, S, W, psi)
     ll_base = ll_old = -np.inf
     n_iter = 0
     for i in range(max_iter):
+        SB, G = T("e_step", e_step_S, W, psi, BtSB, SB_raw)
+        W = T("m_step_W", m_step_W, SB, G)
+        T("m_step_noise", m.noise_model.m_step, W, SB, diagS)
         psi = m.noise_model.noise_as_vec()
-        Ez, sum_Ezz = T("e_step", e_step, Xc, W, psi)
-        XtEz = T("XtEz", lambda: Xc.T @ Ez)
-        W = T("m_step_W", m_step_W, Ez, sum_Ezz, XtEz=XtEz)
-        T("m_step_noise", m.noise_model.m_step, W, sum_Ezz, N=N, X2=X2, XtEz=XtEz)
-        ll = T("log_likelihood", log_likelihood, W, m.noise_model.noise_as_vec(), S, N)
+        BtSB, SB_raw = T("S_products", S_products, S, W, psi)
+        ll = T("log_likelihood", log_likelihood, W, psi, diagS, BtSB, N)
         n_iter += 1
         if i <= 1:
             ll_base = ll
@@ -74,8 +77,8 @@ def _profile_em(model_name, X, k, seed) -> tuple[dict, int]:
             break
         ll_old = ll
 
-    if model_name == "ppca_cf":  # pPCA.fit recomputes S for its reported log-likelihood
-        T("final_ll", lambda: log_likelihood(W, m.noise_model.noise_as_vec(), Xc.T @ Xc / N, N))
+    if model_name == "ppca_cf":  # no iterations: fit() still reports a log-likelihood
+        T("log_likelihood", log_likelihood, W, psi, diagS, BtSB, N)
     return dict(T.t), n_iter
 
 

@@ -131,7 +131,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ):
                 self.flags.heywood = True
 
-            ll_curr, BtSB = log_likelihood(W, psi, diagS, BtSB, N) # O(d + k^3)
+            ll_curr = log_likelihood(W, psi, diagS, BtSB, N) # O(d + k^3)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
@@ -147,7 +147,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ll_old = ll_curr
 
         if not self.ll_history_: # max_iter == 0 PCA closed form
-            ll_curr, _ = log_likelihood(W, psi, diagS, BtSB, N)
+            ll_curr = log_likelihood(W, psi, diagS, BtSB, N)
 
         # EM is sign-equivariant: flipping a column of W leaves C unchanged
         self.components_ = fix_signs(W)  
