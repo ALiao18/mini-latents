@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import scipy as sp
-from scipy.sparse.linalg import svds
+from scipy.linalg import eigh, eighvalsh
+from scipy.sparse.linalg import svds, eigsh
 
 from .tracking import FitFlags
 
@@ -45,6 +46,26 @@ def fix_signs(W: np.ndarray) -> np.ndarray:
     idx = np.argmax(np.abs(W), axis=0)  # (k,) row of each column's largest |entry|
     return W * np.sign(W[idx, np.arange(W.shape[1])])
 
+def top_k_eig_cov(S, k, solver="eighsh", random_state=42):
+    """
+    Top-k descending eigenpairs of a covariance matrix
+    
+    solver = "eigsh": Lanczos on S, O(d^2) per matvac if k < d else O(d^3)
+
+    Returns
+    -------
+    vals (k, )
+    vecs (d, k)
+    """
+    d = S.shape[0]
+    if solver == "eigsh" and k < d:
+        vals, vecs = eigsh(S, k=k, which="LA", random_state=random_state) # LA = Largest Algebraic eigenvalues
+    else:
+        vals, vecs = eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
+
+    order = np.argsort(vals)[::-1]
+    return vals[order], vecs[:, order]
+
 def top_k_eig(Xc, k, solver="svds", random_state = 42):
     """
     Top-k eigenpairs of S = Xc^T Xc / N (descending), and tr(S).
@@ -69,10 +90,12 @@ def top_k_eig(Xc, k, solver="svds", random_state = 42):
         _, s, Vt = svds(Xc, k=k, random_state=random_state)  # Lanczos, doesn't form S
         order = np.argsort(s)[::-1]
         trS = np.einsum("ij,ij->", Xc, Xc) / N    # O(Nd), no S available
-        return s[order] ** 2 / N, Vt[order].T, trS
+        vals = s[order] ** 2 / N
+        vecs = Vt[order].T
+    else:
+        S = Xc.T @ Xc / N  # (d, d) sample covariance
+        trS = np.trace(S)
+        vals, vecs = eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
+        vals, vecs = vals[::-1], vecs[:, ::-1]
 
-    S = Xc.T @ Xc / N  # (d, d) sample covariance
-    trS = np.trace(S)
-    vals, vecs = sp.linalg.eigh(S, subset_by_index=[d - k, d - 1], overwrite_a=True)
-
-    return vals[::-1], vecs[:, ::-1], trS
+    return vals, vecs, trS
