@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import scipy as sp
-from scipy.linalg import eigh, eighvalsh
+from scipy.linalg import eigh
 from scipy.sparse.linalg import svds, eigsh
 
 from .tracking import FitFlags

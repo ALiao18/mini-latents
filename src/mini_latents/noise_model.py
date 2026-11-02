@@ -26,12 +26,14 @@ class NoiseModel(ABC):
         """
 
     @abstractmethod
-    def initialize(self, X: np.ndarray, psi=None):
+    def initialize(self, diagS: np.ndarray, psi=None):
         """
         Initialize the noise model parameters based on X
 
-        X   (N,d): centered data
-        psi      : optional starting value (scalar for isotropic, (d,) for anisotropic
+        diagS: (d, ) ndarray
+            diag(S), S = Xc^T Xc / N 
+        psi: np.ndarray | None
+            optional starting value (scalar for isotropic, (d,) for anisotropic
         """
 
     @abstractmethod
@@ -52,9 +54,9 @@ class IsotropicNoise(NoiseModel):
         self.d = None
         self.psi = None
 
-    def initialize(self, X, psi=None) -> None:
-        self.d = X.shape[1]
-        self.psi = np.var(X, axis=0).mean() if psi is None else psi
+    def initialize(self, diagS: np.ndarray, psi=None) -> None:
+        self.d = diagS.shape[0]
+        self.psi = diagS.mean() if psi is None else psi
 
     def m_step(
         self,
@@ -98,12 +100,12 @@ class AnisotropicNoise(NoiseModel):
         self.var_floor = None
         self.floored = None
 
-    def initialize(self, X, psi=None) -> None:
-        self.d = X.shape[1]
+    def initialize(self, diagS: np.ndarray, psi=None) -> None:
+        self.d = diagS.shape[0]
         self.psi = (
-            np.var(X, axis=0) if psi is None else np.full(self.d, psi, dtype=float)
-        )  # scalar or (d,) -> (d,)
-        self.var_floor = self.min_var_frac * np.var(X, axis=0)  # (d,), O(Nd)
+            diagS.copy() if psi is None else np.full(self.d, psi, dtype=float)
+        )
+        self.var_floor = self.min_var_frac * diagS  # (d,), O(d)
 
     def m_step(
         self,

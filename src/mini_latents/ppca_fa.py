@@ -24,13 +24,13 @@ def geometric_nonzero_eig(S, N, trS):
             L = np.linalg.cholesky(S)
             # trS >= largest eigenvalue of S, so 
             if np.min(np.diagonal(L)) ** 2 > trS * tol_scale:
-                return np.exp(logdet_from_cholesky(L))
+                return np.exp(logdet_from_cholesky(L)/d) 
         except np.linalg.LinAlgError:
-            pass
-    else:
-        eigvals = eigvalsh(S)
-        rank = int(np.sum(eigvals > eigvals[0] * tol_scale))
-        return np.exp(np.sum(np.log(eigvals[:rank]).mean()))
+            pass # not numerically positive definite
+    
+    eigvals = eigvalsh(S)[::-1]
+    rank = int(np.sum(eigvals > eigvals[0] * tol_scale))
+    return np.exp(np.log(eigvals[:rank]).mean())
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
@@ -58,8 +58,6 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
     ):
         """
         Fit the model using the EM algorithm.
-        1. center the data
-        2. initialize W using self._init_W(Xc)
 
         Stopping criterion:
         fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than
@@ -95,11 +93,12 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Xc = X - self.mean_  # (N, d). O(Nd)
         S = Xc.T @ Xc / N  # (d,d), O(Nd^2) sample covariance
         TrS = np.trace(S)  # (scalar), O(d^2), total variance
+        diagS = np.diag(S).copy() # (d,)
         X2 = N * TrS 
 
         # initialize loading matrix with scaled random vectors.
         W, sigma2 = self._init_W(S = S, TrS = TrS, n_components = n_components)  # (d, k), scalar
-        self._init_noise(Xc, sigma2)
+        self._init_noise(self, diagS, sigma2)
         self.ll_history_ = []
 
         ll_curr = -np.inf
@@ -189,7 +188,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         W = eigvecs * np.sqrt(np.clip(diff, 0.0, None))  # clip removes roundoff only
         return W, sigma2
 
-    def _init_noise(self, Xc, sigma2):
+    def _init_noise(self, diagS, sigma2):
         """
         Start variance at maximum likelihood value, consistent with W from _init_W
 
@@ -198,8 +197,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         if sigma2 <= 0:
             msg = "need n_components < min(N, d): sigma^2_ML is the mean of the discarded eigenvalues, and there are none"
             raise ValueError(msg)
-
-        self.noise_model.initialize(Xc, psi=sigma2)
+        else:
+            self.noise_model.initialize(diagS, psi = sigma2)
 
 class pPCA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
@@ -276,11 +275,11 @@ class FA(ProbabilisticLinearLatentModels):
             self.noise_model.min_var_frac = min_var_frac
         return super().fit(X, n_components, max_iter=max_iter, tol=tol)
 
-    def _init_noise(self, Xc, sigma2):
+    def _init_noise(self, diagS, sigma2):
         """
         FA: per-feature variance diag(S).
         """
-        self.noise_model.initialize(Xc)
+        self.noise_model.initialize(diagS, psi=None)
 
     def _init_W(self, S, TrS, n_components):
         """
