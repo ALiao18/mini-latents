@@ -98,7 +98,7 @@ def m_step_W(SB: np.ndarray, G: np.ndarray) -> np.ndarray:
     W_new   (d,k): updated loading matrix
     """
     L = np.linalg.cholesky(G) # O(k^3 / 3)
-    W_new = cholesky_solve(SB.T, L).T
+    W_new = cholesky_solve(SB.T, L).T # O(dk^2)
     return W_new
 
 def log_likelihood(
