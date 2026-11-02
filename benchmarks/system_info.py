@@ -17,7 +17,12 @@ import scipy
 import sklearn
 
 _BYTES_PER_GB = 1024**3
-_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+_THREAD_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 
 
 def get_system_info() -> dict:
@@ -52,7 +57,9 @@ def _get_cpu_model() -> str:
 
 def _get_ram_gb() -> float | None:
     try:
-        return round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / _BYTES_PER_GB, 1)
+        return round(
+            os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / _BYTES_PER_GB, 1
+        )
     except (ValueError, OSError, AttributeError):
         return None
 
@@ -82,7 +89,10 @@ def _get_blas_info() -> dict:
         from threadpoolctl import threadpool_info  # installed with scikit-learn
 
         info["threadpools"] = [
-            {k: p.get(k) for k in ("internal_api", "num_threads", "version", "filepath")}
+            {
+                k: p.get(k)
+                for k in ("internal_api", "num_threads", "version", "filepath")
+            }
             for p in threadpool_info()
         ]
     except ImportError:

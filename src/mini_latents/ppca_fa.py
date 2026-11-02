@@ -6,11 +6,12 @@ from .em_core import e_step_S, e_step, log_likelihood, m_step_W, logdet_from_cho
 from .noise_model import AnisotropicNoise, IsotropicNoise, NoiseModel
 from .tracking import FitFlags
 
+
 def geometric_nonzero_eig(S, N, TrS):
     """
     Geometric mean of the nonzero eigenvalues of S (d, d) covariance matrix.
 
-    if N > d: 
+    if N > d:
         S is full rank, cholesky O(d^3/3)
         log|S| = 2 sum log diag(L) where L is cholesky factor of S
     Else:
@@ -22,21 +23,23 @@ def geometric_nonzero_eig(S, N, TrS):
     if N > d:
         try:
             L = np.linalg.cholesky(S)
-            # trS >= largest eigenvalue of S, so 
+            # trS >= largest eigenvalue of S, so
             if (np.min(np.diagonal(L)) ** 2) > (TrS * tol_scale):
-                return np.exp(logdet_from_cholesky(L)/d) 
+                return np.exp(logdet_from_cholesky(L) / d)
         except np.linalg.LinAlgError:
-            pass # not numerically positive definite
-    
+            pass  # not numerically positive definite
+
     eigvals = eigvalsh(S)[::-1]
     rank = int(np.sum(eigvals > eigvals[0] * tol_scale))
     return np.exp(np.log(eigvals[:rank]).mean())
+
 
 def S_products(S, W, psi):
     """products of S for params (W, psi). O(d^2 k)"""
     B = W / psi[:, None]
     SB_raw = S @ B
     return B.T @ SB_raw, SB_raw
+
 
 class ProbabilisticLinearLatentModels(LinearLatentModels):
     noise_model: NoiseModel
@@ -90,7 +93,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         if not 0 < self.n_components <= min(N, d):
             msg = f"n_components must be in < min({N}, {d}), got {self.n_components}"
             raise ValueError(msg)
-       
+
         self.flags = FitFlags()
 
         # zero mean the data
@@ -98,11 +101,13 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         Xc = X - self.mean_  # (N, d). O(Nd)
         S = Xc.T @ Xc / N  # (d,d), O(Nd^2) sample covariance
         del Xc
-        diagS = np.diag(S).copy() # (d,)
+        diagS = np.diag(S).copy()  # (d,)
         TrS = diagS.sum()  # (scalar), O(d), total variance
-         
+
         # initialize loading matrix with scaled random vectors.
-        W, sigma2 = self._init_W(S = S, TrS = TrS, N = N, n_components = n_components)  # (d, k), scalar
+        W, sigma2 = self._init_W(
+            S=S, TrS=TrS, N=N, n_components=n_components
+        )  # (d, k), scalar
         self._init_noise(diagS, sigma2)
         self.ll_history_ = []
 
@@ -118,9 +123,9 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             # 1. e-step from S O(dk^2 + k^3) for FA, O(dk) for pPCA
             SB, G = e_step_S(W, psi, BtSB, SB_raw)
 
-            # 2. m-step 
-            W = m_step_W(SB, G) # O(k^3 + dk^2)
-            self.noise_model.m_step(W, SB, diagS) # O(dk)
+            # 2. m-step
+            W = m_step_W(SB, G)  # O(k^3 + dk^2)
+            self.noise_model.m_step(W, SB, diagS)  # O(dk)
             psi = self.noise_model.noise_as_vec()
             BtSB, SB_raw = S_products(S, W, psi)
 
@@ -131,7 +136,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ):
                 self.flags.heywood = True
 
-            ll_curr = log_likelihood(W, psi, diagS, BtSB, N) # O(d + k^3)
+            ll_curr = log_likelihood(W, psi, diagS, BtSB, N)  # O(d + k^3)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
@@ -146,11 +151,11 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             # 4. update log likelihood
             ll_old = ll_curr
 
-        if not self.ll_history_: # max_iter == 0 PCA closed form
+        if not self.ll_history_:  # max_iter == 0 PCA closed form
             ll_curr = log_likelihood(W, psi, diagS, BtSB, N)
 
         # EM is sign-equivariant: flipping a column of W leaves C unchanged
-        self.components_ = fix_signs(W)  
+        self.components_ = fix_signs(W)
         self.n_iter_ = len(self.ll_history_)
         self.log_likelihood_ = ll_curr
         return self
@@ -176,7 +181,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
 
         Returns:
         -------------
-        - W: np.ndarray (d,k) 
+        - W: np.ndarray (d,k)
             weight matrix initialization
         - sigma2: scalar
             isotropic noise variance initialization
@@ -185,7 +190,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         k = n_components
 
         eigvals, eigvecs = top_k_eig_cov(S, k)  # (k,), (d,k), scalar
-        sigma2 = (TrS - eigvals.sum()) / (d-k) if k < d else 0.0
+        sigma2 = (TrS - eigvals.sum()) / (d - k) if k < d else 0.0
         # ML noise variance = mean of the d - k discarded eigenvalues
         tol = 10 * np.finfo(float).eps * TrS  # roundoff scale of tr(S)
         if sigma2 <= tol:  # k >= rank(S): no residual variance -> _init_noise raises
@@ -209,7 +214,8 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             msg = "need n_components < min(N, d): sigma^2_ML is the mean of the discarded eigenvalues, and there are none"
             raise ValueError(msg)
         else:
-            self.noise_model.initialize(diagS, psi = sigma2)
+            self.noise_model.initialize(diagS, psi=sigma2)
+
 
 class pPCA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):
@@ -259,6 +265,7 @@ class pPCA(ProbabilisticLinearLatentModels):
             return W, TrS / d
         else:
             return super()._init_W(S, TrS, N, n_components)
+
 
 class FA(ProbabilisticLinearLatentModels):
     def __init__(self, n_components):

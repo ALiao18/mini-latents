@@ -13,7 +13,12 @@ import os
 # BLAS threads must be pinned BEFORE numpy is imported (here and in every worker,
 # which inherits the environment). One thread per process, parallelism across
 # processes: timings stay comparable and the 128 cores are actually used.
-for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+):
     os.environ.setdefault(_var, "1")
 
 import argparse  # noqa: E402
@@ -31,25 +36,59 @@ from benchmarks import convergence, recovery, runtime, stages  # noqa: E402
 from benchmarks.system_info import save_system_info  # noqa: E402
 
 QUICK = {  # tiny configs for a smoke test
-    "recovery": replace(C.RECOVERY_CONFIG, N=C.SweepConfig(200, (100, 400)), d=C.SweepConfig(10), n_runs=2),
-    "runtime": replace(C.RUNTIME_CONFIG, N=C.SweepConfig(200, (100, 400)),
-                       d=C.SweepConfig(20, (10, 20)), k=C.SweepConfig(2, (2, 4)), n_runs=1),
-    "grid": replace(C.BOUNDARY_CONFIG, N_values=(100, 400), d_values=(10, 30, 100), k=3, n_runs=1),
-    "stages": replace(C.STAGE_CONFIG, N=C.SweepConfig(400, (200, 400)),
-                      d=C.SweepConfig(20, (10, 20)), n_runs=1),
+    "recovery": replace(
+        C.RECOVERY_CONFIG,
+        N=C.SweepConfig(200, (100, 400)),
+        d=C.SweepConfig(10),
+        n_runs=2,
+    ),
+    "runtime": replace(
+        C.RUNTIME_CONFIG,
+        N=C.SweepConfig(200, (100, 400)),
+        d=C.SweepConfig(20, (10, 20)),
+        k=C.SweepConfig(2, (2, 4)),
+        n_runs=1,
+    ),
+    "grid": replace(
+        C.BOUNDARY_CONFIG, N_values=(100, 400), d_values=(10, 30, 100), k=3, n_runs=1
+    ),
+    "stages": replace(
+        C.STAGE_CONFIG,
+        N=C.SweepConfig(400, (200, 400)),
+        d=C.SweepConfig(20, (10, 20)),
+        n_runs=1,
+    ),
 }
 
 
 def _benchmarks(quick: bool) -> dict:
     """name -> (list of task args, task function, config)."""
-    cfg = QUICK if quick else {
-        "recovery": C.RECOVERY_CONFIG, "runtime": C.RUNTIME_CONFIG,
-        "grid": C.BOUNDARY_CONFIG, "stages": C.STAGE_CONFIG,
-    }
+    cfg = (
+        QUICK
+        if quick
+        else {
+            "recovery": C.RECOVERY_CONFIG,
+            "runtime": C.RUNTIME_CONFIG,
+            "grid": C.BOUNDARY_CONFIG,
+            "stages": C.STAGE_CONFIG,
+        }
+    )
     return {
-        "recovery": (recovery.tasks(cfg["recovery"]), recovery.run_task, cfg["recovery"]),
-        "runtime": (runtime.sweep_tasks(cfg["runtime"]), runtime.run_sweep_task, cfg["runtime"]),
-        "convergence": (convergence.tasks(cfg["runtime"]), convergence.run_task, cfg["runtime"]),
+        "recovery": (
+            recovery.tasks(cfg["recovery"]),
+            recovery.run_task,
+            cfg["recovery"],
+        ),
+        "runtime": (
+            runtime.sweep_tasks(cfg["runtime"]),
+            runtime.run_sweep_task,
+            cfg["runtime"],
+        ),
+        "convergence": (
+            convergence.tasks(cfg["runtime"]),
+            convergence.run_task,
+            cfg["runtime"],
+        ),
         "grid": (runtime.grid_tasks(cfg["grid"]), runtime.run_grid_task, cfg["grid"]),
         "stages": (stages.tasks(cfg["stages"]), stages.run_task, cfg["stages"]),
     }
@@ -88,8 +127,13 @@ def _concat(parts_dir: Path, out_path: Path) -> int:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("benchmark", choices=["recovery", "runtime", "convergence", "grid", "stages", "all"])
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "benchmark",
+        choices=["recovery", "runtime", "convergence", "grid", "stages", "all"],
+    )
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) // 4))
     ap.add_argument("--out", type=Path, default=Path("benchmarks/results"))
     ap.add_argument("--quick", action="store_true", help="tiny configs (smoke test)")
@@ -118,11 +162,17 @@ def main() -> None:
     failures = []
     ctx = mp.get_context("spawn")  # clean BLAS state in every worker
     with ProcessPoolExecutor(max_workers=args.workers, mp_context=ctx) as pool:
-        futs = {pool.submit(_run_one, fn, a, cfg, part): name for name, fn, a, cfg, part in jobs}
+        futs = {
+            pool.submit(_run_one, fn, a, cfg, part): name
+            for name, fn, a, cfg, part in jobs
+        }
         for i, fut in enumerate(as_completed(futs), 1):
             part, secs, err = fut.result()
             status = "FAILED" if err else "ok"
-            print(f"[{i}/{len(jobs)}] {futs[fut]:9s} {Path(part).name:24s} {secs:8.1f}s {status}", flush=True)
+            print(
+                f"[{i}/{len(jobs)}] {futs[fut]:9s} {Path(part).name:24s} {secs:8.1f}s {status}",
+                flush=True,
+            )
             if err:
                 failures.append((part, err))
 

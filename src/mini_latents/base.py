@@ -46,10 +46,11 @@ def fix_signs(W: np.ndarray) -> np.ndarray:
     idx = np.argmax(np.abs(W), axis=0)  # (k,) row of each column's largest |entry|
     return W * np.sign(W[idx, np.arange(W.shape[1])])
 
+
 def top_k_eig_cov(S, k, solver="eigsh", random_state=42):
     """
     Top-k descending eigenpairs of a covariance matrix
-    
+
     solver = "eigsh": Lanczos on S, O(d^2) per matvac if k < d else O(d^3)
 
     Returns
@@ -59,14 +60,17 @@ def top_k_eig_cov(S, k, solver="eigsh", random_state=42):
     """
     d = S.shape[0]
     if solver == "eigsh" and k < d:
-        vals, vecs = eigsh(S, k=k, which="LA", rng=random_state) # LA = Largest Algebraic eigenvalues
+        vals, vecs = eigsh(
+            S, k=k, which="LA", rng=random_state
+        )  # LA = Largest Algebraic eigenvalues
     else:
         vals, vecs = eigh(S, subset_by_index=[d - k, d - 1])
 
     order = np.argsort(vals)[::-1]
     return vals[order], vecs[:, order]
 
-def top_k_eig(Xc, k, solver="svds", random_state = 42):
+
+def top_k_eig(Xc, k, solver="svds", random_state=42):
     """
     Top-k eigenpairs of S = Xc^T Xc / N (descending), and tr(S).
 
@@ -89,7 +93,7 @@ def top_k_eig(Xc, k, solver="svds", random_state = 42):
     if solver == "svds" and k < min(N, d):
         _, s, Vt = svds(Xc, k=k, random_state=random_state)  # Lanczos, doesn't form S
         order = np.argsort(s)[::-1]
-        trS = np.einsum("ij,ij->", Xc, Xc) / N    # O(Nd), no S available
+        trS = np.einsum("ij,ij->", Xc, Xc) / N  # O(Nd), no S available
         vals = s[order] ** 2 / N
         vecs = Vt[order].T
     else:

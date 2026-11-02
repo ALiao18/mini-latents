@@ -13,7 +13,12 @@ from benchmarks.config import (
     BenchmarkConfig,
     GridConfig,
 )
-from benchmarks.data import generate_ground_truth, realized_snr, subset_by_dims, subset_by_samples
+from benchmarks.data import (
+    generate_ground_truth,
+    realized_snr,
+    subset_by_dims,
+    subset_by_samples,
+)
 from benchmarks.models import REFERENCE_MODELS, fit_model, peak_memory
 
 RUNTIME_MODELS = MODELS + REFERENCE_MODELS
@@ -51,8 +56,14 @@ def sweep_points(sweep: str, run_idx: int, config: BenchmarkConfig):
     if sweep in SUBSETTING_SWEEPS:  # generate once at max, slice
         N_gen = int(config.N.max_value) if sweep == "N" else N
         d_gen = int(config.d.max_value) if sweep == "d" else d
-        sim = generate_ground_truth(N_gen, d_gen, k, config.snr, isotropic=False,
-                                    seed=config.get_data_seed(sweep, run_idx))
+        sim = generate_ground_truth(
+            N_gen,
+            d_gen,
+            k,
+            config.snr,
+            isotropic=False,
+            seed=config.get_data_seed(sweep, run_idx),
+        )
 
     for value_idx, value in enumerate(values):
         if sweep == "N":
@@ -62,8 +73,14 @@ def sweep_points(sweep: str, run_idx: int, config: BenchmarkConfig):
             X, params = subset_by_dims(sim, value)  # re-standardized to config.snr
             point, snr_used = {"N": N, "d": value, "k": k}, realized_snr(params)
         else:  # k: fresh ground truth per value
-            sim_k = generate_ground_truth(N, d, value, config.snr, isotropic=False,
-                                          seed=config.get_data_seed(sweep, run_idx, value_idx))
+            sim_k = generate_ground_truth(
+                N,
+                d,
+                value,
+                config.snr,
+                isotropic=False,
+                seed=config.get_data_seed(sweep, run_idx, value_idx),
+            )
             X = sim_k.X
             point, snr_used = {"N": N, "d": d, "k": value}, config.snr
         yield value_idx, X, point, snr_used
@@ -80,8 +97,15 @@ def run_sweep_task(
     for value_idx, X, point, snr_used in sweep_points(sweep, run_idx, config):
         seed = config.get_fit_seed(sweep, run_idx, value_idx)
         for model in models:
-            rows.append({"sweep": sweep, "run_idx": run_idx, **point, "snr": snr_used,
-                         **_measure(model, X, point["k"], seed, memory)})
+            rows.append(
+                {
+                    "sweep": sweep,
+                    "run_idx": run_idx,
+                    **point,
+                    "snr": snr_used,
+                    **_measure(model, X, point["k"], seed, memory),
+                }
+            )
     return rows
 
 
@@ -93,13 +117,21 @@ def grid_tasks(config: GridConfig = BOUNDARY_CONFIG) -> list[tuple]:
     return [(i, j) for i in range(config.n_runs) for j in range(len(config.d_values))]
 
 
-def run_grid_task(run_idx: int, d_idx: int, config: GridConfig = BOUNDARY_CONFIG) -> list[dict]:
+def run_grid_task(
+    run_idx: int, d_idx: int, config: GridConfig = BOUNDARY_CONFIG
+) -> list[dict]:
     memory = run_idx < MEMORY_RUNS
     # Same data seed for every d_idx in a run -> identical ground truth, sliced.
     # Generating at (max_N, d) rather than (max_N, max_d) and slicing would give
     # different W per d; we keep the latents design (generate at max, slice).
-    sim = generate_ground_truth(config.max_N, config.max_d, config.k, config.snr,
-                                isotropic=True, seed=config.get_data_seed(run_idx))
+    sim = generate_ground_truth(
+        config.max_N,
+        config.max_d,
+        config.k,
+        config.snr,
+        isotropic=True,
+        seed=config.get_data_seed(run_idx),
+    )
     d = config.d_values[d_idx]
     X_d, params = subset_by_dims(sim, d)
     del sim  # free the max-size copy before fitting
@@ -110,6 +142,14 @@ def run_grid_task(run_idx: int, d_idx: int, config: GridConfig = BOUNDARY_CONFIG
         X = X_d[:N].copy()
         seed = config.get_fit_seed(run_idx, N_idx, d_idx)
         for model in GRID_MODELS:
-            rows.append({"run_idx": run_idx, "N": N, "d": d, "k": config.k,
-                         "snr": realized_snr(params), **_measure(model, X, config.k, seed, memory)})
+            rows.append(
+                {
+                    "run_idx": run_idx,
+                    "N": N,
+                    "d": d,
+                    "k": config.k,
+                    "snr": realized_snr(params),
+                    **_measure(model, X, config.k, seed, memory),
+                }
+            )
     return rows

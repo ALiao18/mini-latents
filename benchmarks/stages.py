@@ -7,7 +7,13 @@ from collections import defaultdict
 
 import numpy as np
 
-from benchmarks.config import FIT, MODELS, STAGE_CONFIG, SUBSETTING_SWEEPS, BenchmarkConfig
+from benchmarks.config import (
+    FIT,
+    MODELS,
+    STAGE_CONFIG,
+    SUBSETTING_SWEEPS,
+    BenchmarkConfig,
+)
 from benchmarks.data import generate_ground_truth, subset_by_dims, subset_by_samples
 from benchmarks.models import fit_model
 from mini_latents.base import top_k_eig
@@ -15,8 +21,15 @@ from mini_latents.em_core import e_step_S, log_likelihood, m_step_W
 from mini_latents.ppca_fa import FA, S_products, pPCA
 
 STAGES = (
-    "center", "form_S", "init", "S_products", "e_step",
-    "m_step_W", "m_step_noise", "log_likelihood", "eig",
+    "center",
+    "form_S",
+    "init",
+    "S_products",
+    "e_step",
+    "m_step_W",
+    "m_step_noise",
+    "log_likelihood",
+    "eig",
 )
 
 
@@ -96,15 +109,23 @@ def tasks(config: BenchmarkConfig = STAGE_CONFIG) -> list[tuple]:
     return [(s, i) for s in config.get_active_sweeps() for i in range(config.n_runs)]
 
 
-def run_task(sweep: str, run_idx: int, config: BenchmarkConfig = STAGE_CONFIG) -> list[dict]:
+def run_task(
+    sweep: str, run_idx: int, config: BenchmarkConfig = STAGE_CONFIG
+) -> list[dict]:
     if sweep not in SUBSETTING_SWEEPS:
         msg = f"stage profiling supports N and d sweeps, got '{sweep}'"
         raise ValueError(msg)
     N, d, k = int(config.N.default), int(config.d.default), int(config.k.default)
     N_gen = int(config.N.max_value) if sweep == "N" else N
     d_gen = int(config.d.max_value) if sweep == "d" else d
-    sim = generate_ground_truth(N_gen, d_gen, k, config.snr, isotropic=False,
-                                seed=config.get_data_seed(sweep, run_idx))
+    sim = generate_ground_truth(
+        N_gen,
+        d_gen,
+        k,
+        config.snr,
+        isotropic=False,
+        seed=config.get_data_seed(sweep, run_idx),
+    )
     rows = []
     for value_idx, value in enumerate(config.get_sweep_config(sweep).values):
         if sweep == "N":
@@ -115,13 +136,22 @@ def run_task(sweep: str, run_idx: int, config: BenchmarkConfig = STAGE_CONFIG) -
             point = {"N": N, "d": value, "k": k}
         seed = config.get_fit_seed(sweep, run_idx, value_idx)
         for model in MODELS:
-            stage_t, n_iter = _profile_pca(X, k) if model == "pca" else _profile_em(model, X, k, seed)
+            stage_t, n_iter = (
+                _profile_pca(X, k) if model == "pca" else _profile_em(model, X, k, seed)
+            )
             fit_time = fit_model(model, X, k, seed, infer=False).total_time
             stage_sum = sum(stage_t.values())
-            rows.append({
-                "sweep": sweep, "run_idx": run_idx, **point, "model": model,
-                "n_iter": n_iter, "fit_time": fit_time, "stage_sum": stage_sum,
-                "stage_sum_over_fit": stage_sum / fit_time,
-                **{f"t_{s}": stage_t.get(s, 0.0) for s in STAGES},
-            })
+            rows.append(
+                {
+                    "sweep": sweep,
+                    "run_idx": run_idx,
+                    **point,
+                    "model": model,
+                    "n_iter": n_iter,
+                    "fit_time": fit_time,
+                    "stage_sum": stage_sum,
+                    "stage_sum_over_fit": stage_sum / fit_time,
+                    **{f"t_{s}": stage_t.get(s, 0.0) for s in STAGES},
+                }
+            )
     return rows

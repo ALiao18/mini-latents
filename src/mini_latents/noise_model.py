@@ -30,7 +30,7 @@ class NoiseModel(ABC):
         Initialize the noise model parameters based on X
 
         diagS: (d, ) ndarray
-            diag(S), S = Xc^T Xc / N 
+            diag(S), S = Xc^T Xc / N
         psi: np.ndarray | None
             optional starting value (scalar for isotropic, (d,) for anisotropic
         """
@@ -57,12 +57,7 @@ class IsotropicNoise(NoiseModel):
         self.d = diagS.shape[0]
         self.psi = diagS.mean() if psi is None else psi
 
-    def m_step(
-        self,
-        W_new: np.ndarray,
-        SB: np.ndarray,
-        diagS: np.ndarray
-    ) -> None:
+    def m_step(self, W_new: np.ndarray, SB: np.ndarray, diagS: np.ndarray) -> None:
         """Noise update for pPCA O(dk)"""
         self.psi = (diagS.sum() - np.sum(W_new * SB)) / self.d
 
@@ -80,9 +75,7 @@ class AnisotropicNoise(NoiseModel):
 
     def initialize(self, diagS: np.ndarray, psi=None) -> None:
         self.d = diagS.shape[0]
-        self.psi = (
-            diagS.copy() if psi is None else np.full(self.d, psi, dtype=float)
-        )
+        self.psi = diagS.copy() if psi is None else np.full(self.d, psi, dtype=float)
         self.var_floor = self.min_var_frac * diagS  # (d,), O(d)
 
     def m_step(
@@ -92,7 +85,7 @@ class AnisotropicNoise(NoiseModel):
         diagS: np.ndarray,
     ) -> None:
         """Noise update for FA. O(dk)"""
-        self.psi = diagS - np.sum(W_new * SB, axis = 1) # (d,)
+        self.psi = diagS - np.sum(W_new * SB, axis=1)  # (d,)
         self.floored = np.any(self.psi < self.var_floor)
         self.psi = np.clip(self.psi, self.var_floor, None)
 

@@ -115,6 +115,7 @@ def test_reported_log_likelihood_matches_final_parameters(iso_data):
     )
     np.testing.assert_allclose(model.log_likelihood_, recomputed, rtol=1e-9)
 
+
 # --- recovery and limits ---------------------------------------------------
 
 

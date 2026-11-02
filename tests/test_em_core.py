@@ -93,7 +93,6 @@ def test_e_step_second_moments_are_symmetric_psd(wpsi):
     assert np.linalg.eigvalsh(Ezz).min() > -1e-10
 
 
-
 # --- log_likelihood --------------------------------------------------------
 
 

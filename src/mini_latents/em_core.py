@@ -53,13 +53,14 @@ def e_step(X: np.ndarray, W: np.ndarray, psi: np.ndarray):
 
     return Ez, sum_Ezz
 
+
 def e_step_S(W, psi, BtSB, SB_raw):
     """
-    E-step from sample covariance S (d, d). 
+    E-step from sample covariance S (d, d).
 
     beta:
     M:
-    
+
     SB: S beta^T = XtEZ / N
     G: M + beta S beta^T = sum_Ezz / N
 
@@ -73,15 +74,16 @@ def e_step_S(W, psi, BtSB, SB_raw):
         raise ValueError(msg)
     k = W.shape[1]
 
-    Psi_inv_W = W / psi[:, None]            # (d,k)
-    M_inv = np.eye(k) + W.T @ Psi_inv_W     # (k,k)
-    L = np.linalg.cholesky(M_inv)           # (k,k)
-    M = cholesky_solve(np.eye(k), L)        # (k, k) posterior covariance
+    Psi_inv_W = W / psi[:, None]  # (d,k)
+    M_inv = np.eye(k) + W.T @ Psi_inv_W  # (k,k)
+    L = np.linalg.cholesky(M_inv)  # (k,k)
+    M = cholesky_solve(np.eye(k), L)  # (k, k) posterior covariance
 
-    SB = SB_raw @ M                        # (d, k) O(dk^2)
-    G = M + M @ BtSB @ M                   # (k, k) O(k^3)
+    SB = SB_raw @ M  # (d, k) O(dk^2)
+    G = M + M @ BtSB @ M  # (k, k) O(k^3)
 
-    return SB, G                
+    return SB, G
+
 
 def m_step_W(SB: np.ndarray, G: np.ndarray) -> np.ndarray:
     """
@@ -97,17 +99,18 @@ def m_step_W(SB: np.ndarray, G: np.ndarray) -> np.ndarray:
     ------
     W_new   (d,k): updated loading matrix
     """
-    L = np.linalg.cholesky(G) # O(k^3 / 3)
-    W_new = cholesky_solve(SB.T, L).T # O(dk^2)
+    L = np.linalg.cholesky(G)  # O(k^3 / 3)
+    W_new = cholesky_solve(SB.T, L).T  # O(dk^2)
     return W_new
 
+
 def log_likelihood(
-        W: np.ndarray, 
-        psi: np.ndarray, 
-        diagS: np.ndarray,
-        BtSB: np.ndarray,
-        N: int,
-        ) -> float:
+    W: np.ndarray,
+    psi: np.ndarray,
+    diagS: np.ndarray,
+    BtSB: np.ndarray,
+    N: int,
+) -> float:
     """
     O(d + k^3)
 
@@ -163,7 +166,7 @@ def log_likelihood(
 
     # 2. tr(M B^T S B) with B = psi_inv W
     quad_W = np.trace(cholesky_solve(BtSB, L))  # O(k^3)
-    quad_C_inv = N * (quad_psi - quad_W) 
+    quad_C_inv = N * (quad_psi - quad_W)
 
     # marginal log-likelihood
     constant = N * d * np.log(2 * np.pi)

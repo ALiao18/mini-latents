@@ -37,17 +37,25 @@ def _build_and_fit(name, X, k, seed, fit: FitSettings):
     if name == "ppca_cf":
         return pPCA(k).fit(X, method="closed_form")
     if name == "ppca_em":
-        return pPCA(k).fit(X, method="em", random_seed=seed, max_iter=fit.max_iter, tol=fit.tol)
+        return pPCA(k).fit(
+            X, method="em", random_seed=seed, max_iter=fit.max_iter, tol=fit.tol
+        )
     if name == "fa":
         return FA(k).fit(
-            X, max_iter=fit.max_iter, tol=fit.tol, random_seed=seed, min_var_frac=fit.min_var_frac
+            X,
+            max_iter=fit.max_iter,
+            tol=fit.tol,
+            random_seed=seed,
+            min_var_frac=fit.min_var_frac,
         )
     if name == "sk_pca":
         return SkPCA(n_components=k).fit(X)  # svd_solver="auto", out-of-the-box
     if name == "sk_fa":
         # sklearn defaults (tol=1e-2 on absolute ll change, randomized SVD). Different
         # algorithm and stopping rule: used for memory only; see benchmarks/convergence.py.
-        return SkFA(n_components=k, max_iter=fit.max_iter, random_state=_int_seed(seed)).fit(X)
+        return SkFA(
+            n_components=k, max_iter=fit.max_iter, random_state=_int_seed(seed)
+        ).fit(X)
     msg = f"unknown model '{name}'"
     raise ValueError(msg)
 
@@ -77,9 +85,13 @@ def fit_model(
         W = m.components_.T  # sklearn: (k, d)
         psi = np.full(d, m.noise_variance_) if name == "sk_pca" else m.noise_variance_
         n_iter = getattr(m, "n_iter_", 0)
-        return FitResult(name, W, m.mean_, psi, None, n_iter, True, False, False, total_time)
+        return FitResult(
+            name, W, m.mean_, psi, None, n_iter, True, False, False, total_time
+        )
 
-    psi = np.full(d, m.noise_variance_) if name == "pca" else m.noise_model.noise_as_vec()
+    psi = (
+        np.full(d, m.noise_variance_) if name == "pca" else m.noise_model.noise_as_vec()
+    )
     flags = m.flags
     return FitResult(
         model=name,
@@ -95,7 +107,9 @@ def fit_model(
     )
 
 
-def peak_memory(name: str, X: np.ndarray, k: int, seed, fit: FitSettings = FIT) -> float:
+def peak_memory(
+    name: str, X: np.ndarray, k: int, seed, fit: FitSettings = FIT
+) -> float:
     """
     Peak Python-tracked allocation (MB) during fit(), in a SEPARATE fit from timing:
     tracemalloc slows every allocation. NumPy arrays are tracked; LAPACK's internal

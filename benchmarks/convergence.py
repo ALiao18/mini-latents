@@ -33,10 +33,22 @@ tasks = sweep_tasks
 def _fit(model, X, k, seed, max_iter, tol):
     """Fit and return (estimator, W, psi). sklearn starts from psi = diag(S), like FA."""
     if model == "fa":
-        m = FA(k).fit(X, max_iter=max_iter, tol=tol, random_seed=seed, min_var_frac=FIT.min_var_frac)
+        m = FA(k).fit(
+            X,
+            max_iter=max_iter,
+            tol=tol,
+            random_seed=seed,
+            min_var_frac=FIT.min_var_frac,
+        )
         return m, m.components_, m.noise_model.noise_as_vec()
-    m = SkFA(n_components=k, tol=tol, max_iter=max_iter, svd_method=SK_SVD[model],
-             noise_variance_init=X.var(axis=0), random_state=_int_seed(seed))
+    m = SkFA(
+        n_components=k,
+        tol=tol,
+        max_iter=max_iter,
+        svd_method=SK_SVD[model],
+        noise_variance_init=X.var(axis=0),
+        random_state=_int_seed(seed),
+    )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # stopping at max_iter is intended
         m.fit(X)
@@ -68,7 +80,9 @@ def _timed_fit(model, X, k, seed, n_iter) -> float:
     return time.perf_counter() - t0
 
 
-def run_task(sweep: str, run_idx: int, config: BenchmarkConfig = RUNTIME_CONFIG) -> list[dict]:
+def run_task(
+    sweep: str, run_idx: int, config: BenchmarkConfig = RUNTIME_CONFIG
+) -> list[dict]:
     rows = []
     for value_idx, X, point, snr_used in sweep_points(sweep, run_idx, config):
         k = point["k"]
@@ -80,9 +94,17 @@ def run_task(sweep: str, run_idx: int, config: BenchmarkConfig = RUNTIME_CONFIG)
         best = max(float(np.max(t)) for t, _ in traces.values())
 
         for model, (trace, min_psi_frac) in traces.items():
-            row = {"sweep": sweep, "run_idx": run_idx, **point, "snr": snr_used, "model": model,
-                   "n_iter": len(trace), "best_ll": best, "final_gap": best - float(trace[-1]),
-                   "min_psi_frac": min_psi_frac}
+            row = {
+                "sweep": sweep,
+                "run_idx": run_idx,
+                **point,
+                "snr": snr_used,
+                "model": model,
+                "n_iter": len(trace),
+                "best_ll": best,
+                "final_gap": best - float(trace[-1]),
+                "min_psi_frac": min_psi_frac,
+            }
             times = {}  # n_iter -> seconds; tight targets often land on the same iterate
             for gap in TARGET_GAPS:
                 hits = np.flatnonzero(trace >= best - gap)
