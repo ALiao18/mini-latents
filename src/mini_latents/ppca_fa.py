@@ -63,7 +63,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
         min_var_frac=None,
     ):
         """
-        Fit the model using the EM algorithm. O(d^2k)
+        Fit the model using the EM algorithm. O(d^2k) per iteration
 
         Stopping criterion:
         fastfa.m: after 2 baseline iterations, stop when the latest ll gain is less than
@@ -131,7 +131,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ):
                 self.flags.heywood = True
 
-            ll_curr, BtSB = log_likelihood(W, psi, diagS, SB_raw, N) # O(d + k^3)
+            ll_curr, BtSB = log_likelihood(W, psi, diagS, BtSB, N) # O(d + k^3)
             self.ll_history_.append(ll_curr)
 
             if i <= 1:
@@ -147,7 +147,7 @@ class ProbabilisticLinearLatentModels(LinearLatentModels):
             ll_old = ll_curr
 
         if not self.ll_history_: # max_iter == 0 PCA closed form
-            ll_curr, _ = log_likelihood(W, psi, diagS, SB_raw, N)
+            ll_curr, _ = log_likelihood(W, psi, diagS, BtSB, N)
 
         # EM is sign-equivariant: flipping a column of W leaves C unchanged
         self.components_ = fix_signs(W)  

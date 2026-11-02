@@ -59,7 +59,7 @@ def top_k_eig_cov(S, k, solver="eigsh", random_state=42):
     """
     d = S.shape[0]
     if solver == "eigsh" and k < d:
-        vals, vecs = eigsh(S, k=k, which="LA", random_state=random_state) # LA = Largest Algebraic eigenvalues
+        vals, vecs = eigsh(S, k=k, which="LA", rng=random_state) # LA = Largest Algebraic eigenvalues
     else:
         vals, vecs = eigh(S, subset_by_index=[d - k, d - 1])
 
